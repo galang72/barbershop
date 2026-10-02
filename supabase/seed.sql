@@ -81,19 +81,20 @@ INSERT INTO products (id, category_id, sku, name, cost_price, selling_price, sto
 ('prd_spray_01', 'cat_hair_spray', 'SPY-EXT-01', 'Extra Strong Lock Hair Spray 250ml', 40000, 70000, 15, 5, 'PT Barber Lab', 'kaleng', true)
 ON CONFLICT (id) DO NOTHING;
 
--- 7. CUSTOMERS (Mendukung 4 skenario data)
-INSERT INTO customers (id, name, phone, instagram, address, notes, total_visits, total_spend, last_visit_at, favorite_barberman_id) VALUES
+-- 7. CUSTOMERS (Mendukung 4 skenario data dan multi-cabang)
+INSERT INTO customers (id, name, phone, instagram, address, notes, branch, total_visits, total_spend, last_visit_at, favorite_barberman_id) VALUES
 -- Kasus 1: Nama saja
-('cst_01', 'Budi', NULL, NULL, NULL, 'Pelanggan walk-in santai', 4, 160000, NOW() - INTERVAL '1 day', 'brb_arie'),
+('cst_01', 'Budi', NULL, NULL, NULL, 'Pelanggan walk-in santai', 'Telkom', 4, 160000, NOW() - INTERVAL '1 day', 'brb_arie'),
 -- Kasus 2: Nama + No HP
-('cst_02', 'Rudi Haryanto', '081234567890', NULL, 'Tebet Barat, Jakarta', 'Suka model undercut taper', 5, 260000, NOW() - INTERVAL '2 days', 'brb_dani'),
+('cst_02', 'Rudi Haryanto', '081234567890', NULL, 'Tebet Barat, Jakarta', 'Suka model undercut taper', 'Telkom', 5, 260000, NOW() - INTERVAL '2 days', 'brb_dani'),
 -- Kasus 3: Nama + Instagram
-('cst_03', 'Dimas', NULL, '@dimas_barber', 'Kemang', 'Rambut ikal wavy', 3, 195000, NOW() - INTERVAL '3 days', 'brb_azis'),
+('cst_03', 'Dimas', NULL, '@dimas_barber', 'Kemang', 'Rambut ikal wavy', 'Suta', 3, 195000, NOW() - INTERVAL '3 days', 'brb_azis'),
 -- Kasus 4: Nama + No HP + Instagram
-('cst_04', 'Rizky Ramadhan', '081298765432', '@rizky_ramadhan', 'Jl. Fatmawati No. 12', 'Member VIP aktif', 8, 480000, NOW(), 'brb_arie'),
-('cst_05', 'Kevin Sanjaya', '085711223344', '@kevinsanjaya', 'Pondok Indah', 'Sering beli pomade Suavecito', 6, 410000, NOW(), 'brb_dani'),
-('cst_06', 'Hendra Wijaya', '087812345678', '@hendra.w', 'Cilandak', 'Pelanggan rutin tiap 2 minggu', 7, 350000, NOW() - INTERVAL '4 days', 'brb_azis')
-ON CONFLICT (id) DO NOTHING;
+('cst_04', 'Rizky Ramadhan', '081298765432', '@rizky_ramadhan', 'Jl. Fatmawati No. 12', 'Member VIP aktif', 'Telkom', 8, 480000, NOW(), 'brb_arie'),
+('cst_05', 'Kevin Sanjaya', '085711223344', '@kevinsanjaya', 'Pondok Indah', 'Sering beli pomade Suavecito', 'Telkom', 6, 410000, NOW(), 'brb_dani'),
+('cst_06', 'Hendra Wijaya', '087812345678', '@hendra.w', 'Cilandak', 'Pelanggan rutin tiap 2 minggu', 'Suta', 7, 350000, NOW() - INTERVAL '4 days', 'brb_azis')
+ON CONFLICT (id) DO UPDATE SET
+  branch = EXCLUDED.branch;
 
 -- 8. MEMBERS
 INSERT INTO members (id, customer_id, member_code, name, phone, package_name, start_date, end_date, status, total_visits, total_spend) VALUES
