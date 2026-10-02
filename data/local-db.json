@@ -1,0 +1,720 @@
+{
+  "initialized": true,
+  "users": [
+    {
+      "id": "usr_owner",
+      "username": "owner",
+      "email": "owner@adbarbershop.com",
+      "passwordHash": "$2a$10$Zdc.uwkun8GnpHBvdzFtCujNslOjsgaEU9ZnlY5EzuS3gEKrwyXNW",
+      "name": "Owner AD Barbershop",
+      "role": "OWNER",
+      "branch": "All"
+    },
+    {
+      "id": "usr_admin_telkom",
+      "username": "admin_telkom",
+      "email": "telkom@adbarbershop.com",
+      "passwordHash": "$2a$10$Zdc.uwkun8GnpHBvdzFtCujNslOjsgaEU9ZnlY5EzuS3gEKrwyXNW",
+      "name": "Admin Telkom",
+      "role": "ADMIN_TELKOM",
+      "branch": "Telkom"
+    },
+    {
+      "id": "usr_admin_suta",
+      "username": "admin_suta",
+      "email": "suta@adbarbershop.com",
+      "passwordHash": "$2a$10$Zdc.uwkun8GnpHBvdzFtCujNslOjsgaEU9ZnlY5EzuS3gEKrwyXNW",
+      "name": "Admin Suta",
+      "role": "ADMIN_SUTA",
+      "branch": "Suta"
+    }
+  ],
+  "barbermen": [
+    {
+      "id": "brb_dani",
+      "name": "Dani",
+      "nickname": "Bang Dani",
+      "phone": "081255556666",
+      "isActive": true,
+      "homeBranch": "Telkom",
+      "workingBranch": "Telkom",
+      "branch": "Telkom",
+      "status": "AKTIF"
+    },
+    {
+      "id": "brb_ari",
+      "name": "Ari",
+      "nickname": "Bang Ari",
+      "phone": "081200004444",
+      "isActive": true,
+      "homeBranch": "Telkom",
+      "workingBranch": "Telkom",
+      "branch": "Telkom",
+      "status": "AKTIF"
+    },
+    {
+      "id": "brb_azis",
+      "name": "Azis",
+      "nickname": "Bang Azis",
+      "phone": "081233334444",
+      "isActive": true,
+      "homeBranch": "Telkom",
+      "workingBranch": "Telkom",
+      "branch": "Telkom",
+      "status": "AKTIF"
+    },
+    {
+      "id": "brb_ade",
+      "name": "Ade",
+      "nickname": "Bang Ade",
+      "phone": "081200001111",
+      "isActive": true,
+      "homeBranch": "Suta",
+      "workingBranch": "Suta",
+      "branch": "Suta",
+      "status": "AKTIF"
+    },
+    {
+      "id": "brb_arif",
+      "name": "Arif",
+      "nickname": "Bang Arif",
+      "phone": "081200002222",
+      "isActive": true,
+      "homeBranch": "Suta",
+      "workingBranch": "Suta",
+      "branch": "Suta",
+      "status": "AKTIF"
+    },
+    {
+      "id": "brb_akmal",
+      "name": "Akmal",
+      "nickname": "Bang Akmal",
+      "phone": "081200003333",
+      "isActive": true,
+      "homeBranch": "Suta",
+      "workingBranch": "Suta",
+      "branch": "Suta",
+      "status": "AKTIF"
+    }
+  ],
+  "services": [
+    {
+      "id": "srv_haircut_classic",
+      "name": "Special Service",
+      "category": "HAIRCUT",
+      "price": 80000,
+      "durationMinutes": 60,
+      "isActive": true
+    },
+    {
+      "id": "srv_haircut_premium",
+      "name": "Creambath",
+      "category": "TREATMENT",
+      "price": 50000,
+      "durationMinutes": 30,
+      "isActive": true
+    },
+    {
+      "id": "srv_kids_haircut",
+      "name": "Kids Haircut",
+      "category": "HAIRCUT",
+      "price": 60000,
+      "durationMinutes": 50,
+      "isActive": true
+    },
+    {
+      "id": "srv_beard_trim",
+      "name": "Ear Candle + Head Massage",
+      "category": "TREATMENT",
+      "price": 30000,
+      "durationMinutes": 30,
+      "isActive": true
+    },
+    {
+      "id": "srv_hair_spa",
+      "name": "Black Mask",
+      "category": "TREATMENT",
+      "price": 25000,
+      "durationMinutes": 15,
+      "isActive": true
+    },
+    {
+      "id": "srv_hair_coloring",
+      "name": "Hair Coloring (Basic Black/Brown)",
+      "category": "COLORING",
+      "price": 450000,
+      "durationMinutes": 60,
+      "isActive": true
+    },
+    {
+      "id": "srv_1790441414651",
+      "isActive": true,
+      "createdAt": "2026-09-26T16:50:14.651Z",
+      "name": "Hair Coloring (Basic Black/Brown)",
+      "category": "COLORING",
+      "price": 100000,
+      "durationMinutes": 60
+    },
+    {
+      "id": "srv_1790441499863",
+      "isActive": true,
+      "createdAt": "2026-09-26T16:51:39.863Z",
+      "name": "Perming",
+      "category": "SHAVE",
+      "price": 450000,
+      "durationMinutes": 60
+    },
+    {
+      "id": "srv_1790441521807",
+      "isActive": true,
+      "createdAt": "2026-09-26T16:52:01.807Z",
+      "name": "Perming",
+      "category": "SHAVE",
+      "price": 100000,
+      "durationMinutes": 60
+    },
+    {
+      "id": "srv_1790441579756",
+      "isActive": true,
+      "createdAt": "2026-09-26T16:52:59.756Z",
+      "name": "Beard Trim",
+      "category": "SHAVE",
+      "price": 15000,
+      "durationMinutes": 10
+    }
+  ],
+  "categories": [
+    {
+      "id": "cat_pomade",
+      "name": "Pomade",
+      "slug": "pomade",
+      "description": "Minyak rambut styling pria"
+    },
+    {
+      "id": "cat_tonic",
+      "name": "Tonic",
+      "slug": "tonic",
+      "description": "Tonik penyegar akar rambut"
+    },
+    {
+      "id": "cat_powder",
+      "name": "Powder",
+      "slug": "powder",
+      "description": "Styling powder bervolume"
+    },
+    {
+      "id": "cat_shampoo",
+      "name": "Shampoo",
+      "slug": "shampoo",
+      "description": "Shampoo perawatan kulit kepala"
+    },
+    {
+      "id": "cat_hair_clay",
+      "name": "Hair Clay",
+      "slug": "hair-clay",
+      "description": "Clay styling matte"
+    },
+    {
+      "id": "cat_hair_spray",
+      "name": "Hair Spray",
+      "slug": "hair-spray",
+      "description": "Spray pengunci rambut"
+    }
+  ],
+  "products": [
+    {
+      "id": "prd_smith_fine",
+      "categoryId": "cat_pomade",
+      "sku": "POM-SMF-01",
+      "name": "Smith Fine Shine",
+      "costPrice": 30000,
+      "sellingPrice": 130000,
+      "stock": 3,
+      "minStock": 3,
+      "unit": "sachet",
+      "isActive": true,
+      "stockTelkom": 2,
+      "stockSuta": 1
+    },
+    {
+      "id": "prd_smith_prem",
+      "categoryId": "cat_pomade",
+      "sku": "POM-SMP-02",
+      "name": "Smith Premium Medium",
+      "costPrice": 30000,
+      "sellingPrice": 130000,
+      "stock": 1,
+      "minStock": 3,
+      "unit": "sachet",
+      "isActive": true,
+      "stockTelkom": 1,
+      "stockSuta": 0
+    },
+    {
+      "id": "prd_smith_bold",
+      "categoryId": "cat_pomade",
+      "sku": "POM-SMB-03",
+      "name": "Smith Bold Hold",
+      "costPrice": 30000,
+      "sellingPrice": 130000,
+      "stock": 2,
+      "minStock": 3,
+      "unit": "sachet",
+      "isActive": true,
+      "stockTelkom": 1,
+      "stockSuta": 1
+    },
+    {
+      "id": "prd_paradox_grand",
+      "categoryId": "cat_pomade",
+      "sku": "POM-PDG-04",
+      "name": "Paradox Clay Grandfather",
+      "costPrice": 130000,
+      "sellingPrice": 160000,
+      "stock": 4,
+      "minStock": 2,
+      "unit": "sachet",
+      "isActive": true,
+      "stockTelkom": 2,
+      "stockSuta": 2
+    },
+    {
+      "id": "prd_paradox_quant",
+      "categoryId": "cat_pomade",
+      "sku": "POM-PDQ-05",
+      "name": "Paradox Clay Quantum",
+      "costPrice": 130000,
+      "sellingPrice": 160000,
+      "stock": 0,
+      "minStock": 2,
+      "unit": "sachet",
+      "isActive": true,
+      "stockTelkom": 0,
+      "stockSuta": 0
+    },
+    {
+      "id": "prd_hairmers_clay",
+      "categoryId": "cat_pomade",
+      "sku": "POM-HMC-06",
+      "name": "Hairmers Clay",
+      "costPrice": 125000,
+      "sellingPrice": 160000,
+      "stock": 0,
+      "minStock": 2,
+      "unit": "sachet",
+      "isActive": true,
+      "stockTelkom": 0,
+      "stockSuta": 0
+    },
+    {
+      "id": "prd_hairmers_pwd",
+      "categoryId": "cat_powder",
+      "sku": "PWD-HMP-07",
+      "name": "Hairmers Powder",
+      "costPrice": 65000,
+      "sellingPrice": 100000,
+      "stock": 0,
+      "minStock": 2,
+      "unit": "sachet",
+      "isActive": true,
+      "stockTelkom": 0,
+      "stockSuta": 0
+    },
+    {
+      "id": "prd_smith_ocean",
+      "categoryId": "cat_powder",
+      "sku": "PWD-SMO-08",
+      "name": "Smith Ocean Dust Powder",
+      "costPrice": 65000,
+      "sellingPrice": 100000,
+      "stock": 0,
+      "minStock": 2,
+      "unit": "sachet",
+      "isActive": true,
+      "stockTelkom": 0,
+      "stockSuta": 0
+    },
+    {
+      "id": "prd_powder_paradox",
+      "categoryId": "cat_powder",
+      "sku": "PWD-PPX-09",
+      "name": "Powder Paradox",
+      "costPrice": 65000,
+      "sellingPrice": 100000,
+      "stock": 0,
+      "minStock": 2,
+      "unit": "sachet",
+      "isActive": true,
+      "stockTelkom": 0,
+      "stockSuta": 0
+    },
+    {
+      "id": "prd_nobad_pwd",
+      "categoryId": "cat_powder",
+      "sku": "PWD-NBH-10",
+      "name": "No Bad Hair Powder",
+      "costPrice": 110000,
+      "sellingPrice": 195000,
+      "stock": 0,
+      "minStock": 2,
+      "unit": "sachet",
+      "isActive": true,
+      "stockTelkom": 0,
+      "stockSuta": 0
+    },
+    {
+      "id": "prd_hairmers_paste",
+      "categoryId": "cat_pomade",
+      "sku": "POM-HMP-11",
+      "name": "Hairmers Paste Kecil",
+      "costPrice": 65000,
+      "sellingPrice": 100000,
+      "stock": 0,
+      "minStock": 2,
+      "unit": "sachet",
+      "isActive": true,
+      "stockTelkom": 0,
+      "stockSuta": 0
+    },
+    {
+      "id": "prd_hairmers_pro",
+      "categoryId": "cat_pomade",
+      "sku": "POM-HPW-12",
+      "name": "Hairmers Pro Water Based Kecil",
+      "costPrice": 55000,
+      "sellingPrice": 100000,
+      "stock": 0,
+      "minStock": 2,
+      "unit": "sachet",
+      "isActive": true,
+      "stockTelkom": 0,
+      "stockSuta": 0
+    },
+    {
+      "id": "prd_dream_oil_heavy",
+      "categoryId": "cat_pomade",
+      "sku": "POM-DOH-13",
+      "name": "Dream Pomade Oil Based Heavy Hold",
+      "costPrice": 70000,
+      "sellingPrice": 110000,
+      "stock": 0,
+      "minStock": 2,
+      "unit": "sachet",
+      "isActive": true,
+      "stockTelkom": 0,
+      "stockSuta": 0
+    },
+    {
+      "id": "prd_dream_oil_light",
+      "categoryId": "cat_pomade",
+      "sku": "POM-DOL-14",
+      "name": "Dream Pomade Oil Based Light Hold",
+      "costPrice": 80000,
+      "sellingPrice": 120000,
+      "stock": 3,
+      "minStock": 2,
+      "unit": "sachet",
+      "isActive": true,
+      "stockTelkom": 2,
+      "stockSuta": 1
+    },
+    {
+      "id": "prd_dream_wb_strong",
+      "categoryId": "cat_pomade",
+      "sku": "POM-DWS-15",
+      "name": "Dream Pomade WB Strong Hold",
+      "costPrice": 80000,
+      "sellingPrice": 120000,
+      "stock": 2,
+      "minStock": 2,
+      "unit": "sachet",
+      "isActive": true,
+      "stockTelkom": 1,
+      "stockSuta": 1
+    },
+    {
+      "id": "prd_dream_wb_hyper",
+      "categoryId": "cat_pomade",
+      "sku": "POM-DWH-16",
+      "name": "Dream Pomade WB Hyper Strong",
+      "costPrice": 80000,
+      "sellingPrice": 120000,
+      "stock": 0,
+      "minStock": 2,
+      "unit": "sachet",
+      "isActive": true,
+      "stockTelkom": 0,
+      "stockSuta": 0
+    },
+    {
+      "id": "prd_puppet_wb",
+      "categoryId": "cat_pomade",
+      "sku": "POM-PPW-17",
+      "name": "Puppet Pomade Waterbased",
+      "costPrice": 85000,
+      "sellingPrice": 130000,
+      "stock": 0,
+      "minStock": 2,
+      "unit": "sachet",
+      "isActive": true,
+      "stockTelkom": 0,
+      "stockSuta": 0
+    },
+    {
+      "id": "prd_puppet_clay",
+      "categoryId": "cat_pomade",
+      "sku": "POM-PPC-18",
+      "name": "Puppet Clay",
+      "costPrice": 100000,
+      "sellingPrice": 130000,
+      "stock": 0,
+      "minStock": 2,
+      "unit": "sachet",
+      "isActive": true,
+      "stockTelkom": 0,
+      "stockSuta": 0
+    },
+    {
+      "id": "prd_freestyle_dust",
+      "categoryId": "cat_powder",
+      "sku": "PWD-FSD-19",
+      "name": "Powder Free Style Dust",
+      "costPrice": 75000,
+      "sellingPrice": 110000,
+      "stock": 3,
+      "minStock": 3,
+      "unit": "sachet",
+      "isActive": true,
+      "stockTelkom": 2,
+      "stockSuta": 1
+    },
+    {
+      "id": "prd_hairpro_dot",
+      "categoryId": "cat_pomade",
+      "sku": "POM-HPD-20",
+      "name": "Hairpro Dot Clay",
+      "costPrice": 75000,
+      "sellingPrice": 110000,
+      "stock": 1,
+      "minStock": 2,
+      "unit": "sachet",
+      "isActive": true,
+      "stockTelkom": 1,
+      "stockSuta": 0
+    },
+    {
+      "id": "prd_hair_paste_new",
+      "categoryId": "cat_pomade",
+      "sku": "POM-HPN-21",
+      "name": "Hair Paste New",
+      "costPrice": 75000,
+      "sellingPrice": 110000,
+      "stock": 1,
+      "minStock": 2,
+      "unit": "sachet",
+      "isActive": true,
+      "stockTelkom": 1,
+      "stockSuta": 0
+    },
+    {
+      "id": "prd_hairpro_wb_new",
+      "categoryId": "cat_pomade",
+      "sku": "POM-HWN-22",
+      "name": "Hairpro Water Based New",
+      "costPrice": 75000,
+      "sellingPrice": 110000,
+      "stock": 2,
+      "minStock": 2,
+      "unit": "sachet",
+      "isActive": true,
+      "stockTelkom": 1,
+      "stockSuta": 1
+    },
+    {
+      "id": "prd_puppet_murph",
+      "categoryId": "cat_powder",
+      "sku": "PWD-PPM-23",
+      "name": "Powder Puppet Murpheus",
+      "costPrice": 75000,
+      "sellingPrice": 100000,
+      "stock": 0,
+      "minStock": 2,
+      "unit": "sachet",
+      "isActive": true,
+      "stockTelkom": 0,
+      "stockSuta": 0
+    }
+  ],
+  "stockMovements": [],
+  "customers": [
+    {
+      "id": "cst_1790936030724",
+      "name": "TEST",
+      "phone": null,
+      "instagram": "TESSSSS",
+      "address": null,
+      "notes": null,
+      "totalVisits": 1,
+      "totalSpend": 80000,
+      "lastVisitAt": "2026-10-02T10:13:50.724Z",
+      "favoriteBarbermanId": "brb_ari",
+      "branch": "Telkom",
+      "createdAt": "2026-10-02T10:13:50.724Z",
+      "updatedAt": "2026-10-02T10:13:50.724Z"
+    },
+    {
+      "id": "cst_1790935947451",
+      "name": "GALANG",
+      "phone": null,
+      "instagram": "galangajawee",
+      "address": null,
+      "notes": null,
+      "totalVisits": 1,
+      "totalSpend": 80000,
+      "lastVisitAt": "2026-10-02T10:12:27.451Z",
+      "favoriteBarbermanId": "brb_dani",
+      "branch": "Telkom",
+      "createdAt": "2026-10-02T10:12:27.451Z",
+      "updatedAt": "2026-10-02T10:12:27.451Z"
+    }
+  ],
+  "members": [],
+  "bookings": [],
+  "transactions": [
+    {
+      "id": "tx_1790936030724",
+      "invoiceNumber": "AD-20261002-7014",
+      "customerId": "cst_1790936030724",
+      "customerName": "TEST",
+      "customerPhone": null,
+      "customerInstagram": "TESSSSS",
+      "barbermanId": "brb_ari",
+      "barbermanName": "Ari",
+      "barbermanHomeBranch": "Telkom",
+      "barbermanWorkingBranch": "Telkom",
+      "branch": "Telkom",
+      "subtotal": 80000,
+      "discount": 0,
+      "grandTotal": 80000,
+      "paymentMethod": "CASH",
+      "paymentStatus": "PAID",
+      "notes": null,
+      "createdAt": "2026-10-02T10:13:50.724Z"
+    },
+    {
+      "id": "tx_1790935947451",
+      "invoiceNumber": "AD-20261002-2983",
+      "customerId": "cst_1790935947451",
+      "customerName": "GALANG",
+      "customerPhone": null,
+      "customerInstagram": "galangajawee",
+      "barbermanId": "brb_dani",
+      "barbermanName": "Dani",
+      "barbermanHomeBranch": "Telkom",
+      "barbermanWorkingBranch": "Telkom",
+      "branch": "Telkom",
+      "subtotal": 80000,
+      "discount": 0,
+      "grandTotal": 80000,
+      "paymentMethod": "QRIS",
+      "paymentStatus": "PAID",
+      "notes": null,
+      "createdAt": "2026-10-02T10:12:27.451Z"
+    }
+  ],
+  "transactionItems": [
+    {
+      "id": "txi_tx_1790935947451_0",
+      "transactionId": "tx_1790935947451",
+      "itemType": "SERVICE",
+      "serviceId": "srv_haircut_classic",
+      "productId": null,
+      "name": "Special Service",
+      "price": 80000,
+      "costPrice": 0,
+      "quantity": 1,
+      "subtotal": 80000
+    },
+    {
+      "id": "txi_tx_1790936030724_0",
+      "transactionId": "tx_1790936030724",
+      "itemType": "SERVICE",
+      "serviceId": "srv_haircut_classic",
+      "productId": null,
+      "name": "Special Service",
+      "price": 80000,
+      "costPrice": 0,
+      "quantity": 1,
+      "subtotal": 80000
+    }
+  ],
+  "payments": [
+    {
+      "id": "pay_1790935947452",
+      "transactionId": "tx_1790935947451",
+      "paymentMethod": "QRIS",
+      "amountPaid": 80000,
+      "changeAmount": 0,
+      "paymentRef": null,
+      "createdAt": "2026-10-02T10:12:27.452Z"
+    },
+    {
+      "id": "pay_1790936030725",
+      "transactionId": "tx_1790936030724",
+      "paymentMethod": "CASH",
+      "amountPaid": 80000,
+      "changeAmount": 0,
+      "paymentRef": null,
+      "createdAt": "2026-10-02T10:13:50.725Z"
+    }
+  ],
+  "cashTransactions": [
+    {
+      "id": "csh_1790936030725",
+      "type": "CASH_IN",
+      "category": "Penjualan Kasir",
+      "amount": 80000,
+      "description": "Pembayaran Cash Kasir AD-20261002-7014 (TEST)",
+      "source": "POS_SALE",
+      "transactionId": "tx_1790936030724",
+      "branch": "Telkom",
+      "createdAt": "2026-10-02T10:13:50.725Z"
+    }
+  ],
+  "expenses": [],
+  "transfers": [],
+  "branchReports": [],
+  "activities": [
+    {
+      "id": "act_1790936030732_97rk",
+      "action": "TRANSAKSI_KASIR",
+      "description": "Transaksi kasir AD-20261002-7014 sebesar Rp 80.000 di Cabang Telkom (TEST) oleh Ari",
+      "branch": "Telkom",
+      "actor": "TEST",
+      "details": null,
+      "createdAt": "2026-10-02T10:13:50.732Z"
+    },
+    {
+      "id": "act_1790935947630_ns4q",
+      "action": "TRANSAKSI_KASIR",
+      "description": "Transaksi kasir AD-20261002-2983 sebesar Rp 80.000 di Cabang Telkom (GALANG) oleh Dani",
+      "branch": "Telkom",
+      "actor": "GALANG",
+      "details": null,
+      "createdAt": "2026-10-02T10:12:27.630Z"
+    }
+  ],
+  "barberAssignments": [],
+  "shopSettings": {
+    "id": "default",
+    "shopName": "AD BARBERSHOP",
+    "address": "Jl. Telekomunikasi No.234, Lengkong, Kec. Bojongsoang, Kabupaten Bandung, Jawa Barat 40287",
+    "phone": "0895-3267-09996",
+    "receiptHeader": "Classic Haircut & Professional Grooming",
+    "receiptFooter": "Terima Kasih Atas Kunjungan Anda! Tampil Lebih Percaya Diri Bersama AD Barbershop.",
+    "initialCashFloat": 100000,
+    "bookingQrUrl": "/qris-ad-barbershop.png",
+    "initialCashFloatTelkom": 100000,
+    "initialCashFloatSuta": 100000
+  }
+}
