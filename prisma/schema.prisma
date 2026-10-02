@@ -105,6 +105,7 @@ model Customer {
   instagram           String?
   address             String?
   notes               String?
+  branch              String?       @default("Telkom")
   totalVisits         Int           @default(0) @map("total_visits")
   totalSpend          Float         @default(0) @map("total_spend")
   lastVisitAt         DateTime?     @map("last_visit_at")

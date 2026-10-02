@@ -141,11 +141,11 @@ async function main() {
 
   // 7. Customers (Mendukung 4 macam kasus)
   const customersData = [
-    { id: 'cst_01', name: 'Budi', phone: null, instagram: null, totalVisits: 4, totalSpend: 160000, favoriteBarbermanId: arie.id },
-    { id: 'cst_02', name: 'Rudi Haryanto', phone: '081234567890', instagram: null, totalVisits: 5, totalSpend: 260000, favoriteBarbermanId: dani.id },
-    { id: 'cst_03', name: 'Dimas', phone: null, instagram: '@dimas_barber', totalVisits: 3, totalSpend: 195000, favoriteBarbermanId: azis.id },
-    { id: 'cst_04', name: 'Rizky Ramadhan', phone: '081298765432', instagram: '@rizky_ramadhan', totalVisits: 8, totalSpend: 480000, favoriteBarbermanId: arie.id },
-    { id: 'cst_05', name: 'Kevin Sanjaya', phone: '085711223344', instagram: '@kevinsanjaya', totalVisits: 6, totalSpend: 410000, favoriteBarbermanId: dani.id },
+    { id: 'cst_01', name: 'Budi', phone: null, instagram: null, branch: 'Telkom', totalVisits: 4, totalSpend: 160000, favoriteBarbermanId: arie.id },
+    { id: 'cst_02', name: 'Rudi Haryanto', phone: '081234567890', instagram: null, branch: 'Telkom', totalVisits: 5, totalSpend: 260000, favoriteBarbermanId: dani.id },
+    { id: 'cst_03', name: 'Dimas', phone: null, instagram: '@dimas_barber', branch: 'Suta', totalVisits: 3, totalSpend: 195000, favoriteBarbermanId: azis.id },
+    { id: 'cst_04', name: 'Rizky Ramadhan', phone: '081298765432', instagram: '@rizky_ramadhan', branch: 'Telkom', totalVisits: 8, totalSpend: 480000, favoriteBarbermanId: arie.id },
+    { id: 'cst_05', name: 'Kevin Sanjaya', phone: '085711223344', instagram: '@kevinsanjaya', branch: 'Telkom', totalVisits: 6, totalSpend: 410000, favoriteBarbermanId: dani.id },
   ];
 
   for (const c of customersData) {

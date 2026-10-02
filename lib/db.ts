@@ -127,6 +127,13 @@ export function ensureRolesAndTransfers(db: InMemoryDB) {
   if (db.shopSettings.initialCashFloatTelkom === undefined) db.shopSettings.initialCashFloatTelkom = 100000;
   if (db.shopSettings.initialCashFloatSuta === undefined) db.shopSettings.initialCashFloatSuta = 100000;
 
+  // Pastikan customer memiliki branch
+  if (db.customers && Array.isArray(db.customers)) {
+    for (const c of db.customers) {
+      if (!c.branch) c.branch = "Telkom";
+    }
+  }
+
   // Pastikan 6 barberman memiliki homeBranch, workingBranch, dan status yang benar
   // PENTING: Jangan override workingBranch yang sudah tersimpan — hanya set default jika belum ada
   if (db.barbermen && Array.isArray(db.barbermen)) {
@@ -237,6 +244,7 @@ export async function ensureSupabaseSchema(): Promise<void> {
     try { await prisma.$executeRawUnsafe(`ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "stock_telkom" INTEGER NOT NULL DEFAULT 0`); } catch {}
     try { await prisma.$executeRawUnsafe(`ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "stock_suta" INTEGER NOT NULL DEFAULT 0`); } catch {}
     try { await prisma.$executeRawUnsafe(`ALTER TABLE "customers" ADD COLUMN IF NOT EXISTS "branch" TEXT DEFAULT 'Telkom'`); } catch {}
+    try { await prisma.$executeRawUnsafe(`UPDATE "customers" SET "branch" = 'Telkom' WHERE "branch" IS NULL`); } catch {}
     try { await prisma.$executeRawUnsafe(`ALTER TABLE "customers" ADD COLUMN IF NOT EXISTS "instagram" TEXT`); } catch {}
     try { await prisma.$executeRawUnsafe(`ALTER TABLE "customers" ADD COLUMN IF NOT EXISTS "address" TEXT`); } catch {}
     try { await prisma.$executeRawUnsafe(`ALTER TABLE "customers" ADD COLUMN IF NOT EXISTS "notes" TEXT`); } catch {}
@@ -769,7 +777,10 @@ export async function hydrateFromSupabase(): Promise<void> {
     }
     }
     memoryDB.categories = categories;
-    memoryDB.customers = customers;
+    memoryDB.customers = customers.map((c: any) => ({
+      ...c,
+      branch: c.branch || "Telkom",
+    }));
     memoryDB.members = members;
     memoryDB.bookings = bookings;
     {
@@ -1783,7 +1794,7 @@ export async function getCustomers(query?: string) {
     }));
 }
 
-export async function createCustomer(data: { name: string; phone?: string | null; instagram?: string | null; address?: string | null; notes?: string | null }) {
+export async function createCustomer(data: { name: string; phone?: string | null; instagram?: string | null; address?: string | null; notes?: string | null; branch?: string | null }) {
   await initMemoryDBIfNeeded();
   const clean = {
     name: data.name.trim(),
@@ -1791,6 +1802,7 @@ export async function createCustomer(data: { name: string; phone?: string | null
     instagram: data.instagram?.trim() || null,
     address: data.address?.trim() || null,
     notes: data.notes?.trim() || null,
+    branch: data.branch?.trim() || "Telkom",
     totalVisits: 0,
     totalSpend: 0,
   };
@@ -1808,7 +1820,7 @@ export async function createCustomer(data: { name: string; phone?: string | null
 }
 
 
-export async function updateCustomer(id: string, data: { name?: string; phone?: string | null; instagram?: string | null; address?: string | null; notes?: string | null }) {
+export async function updateCustomer(id: string, data: { name?: string; phone?: string | null; instagram?: string | null; address?: string | null; notes?: string | null; branch?: string | null }) {
   await initMemoryDBIfNeeded();
   const dbUrl = process.env.DATABASE_URL || "";
   const prismaData: any = {};
@@ -1817,6 +1829,7 @@ export async function updateCustomer(id: string, data: { name?: string; phone?: 
   if (data.instagram !== undefined) prismaData.instagram = data.instagram?.trim() || null;
   if (data.address !== undefined) prismaData.address = data.address?.trim() || null;
   if (data.notes !== undefined) prismaData.notes = data.notes?.trim() || null;
+  if (data.branch !== undefined) prismaData.branch = data.branch?.trim() || "Telkom";
   if (dbUrl && !dbUrl.includes("[YOUR-") && !dbUrl.includes("placeholder")) {
     if (!(await isDatabaseConnected())) throw new Error("Database Supabase tidak terhubung.");
     const updated = await prisma.customer.update({ where: { id }, data: prismaData });
@@ -2216,6 +2229,7 @@ export async function processCheckout(payload: CheckoutPayload & { branch?: stri
             totalSpend,
             lastVisitAt: now,
             favoriteBarbermanId: payload.barbermanId,
+            branch: txBranch,
           },
         })
       : await tx.customer.create({
@@ -2228,6 +2242,7 @@ export async function processCheckout(payload: CheckoutPayload & { branch?: stri
             totalSpend,
             lastVisitAt: now,
             favoriteBarbermanId: payload.barbermanId,
+            branch: txBranch,
           },
         });
 
@@ -2379,6 +2394,7 @@ async function processCheckoutMemoryFallback(payload: CheckoutPayload & { branch
     cust.totalSpend = (cust.totalSpend || 0) + payload.grandTotal;
     cust.lastVisitAt = new Date();
     cust.favoriteBarbermanId = payload.barbermanId;
+    cust.branch = txBranch;
     if (payload.customerPhone && !cust.phone) cust.phone = payload.customerPhone.trim();
     if (payload.customerInstagram && !cust.instagram) cust.instagram = payload.customerInstagram.trim();
     cust.updatedAt = new Date();
@@ -2528,6 +2544,7 @@ async function processCheckoutMemoryFallback(payload: CheckoutPayload & { branch
           totalSpend: cust.totalSpend,
           lastVisitAt: cust.lastVisitAt ? new Date(cust.lastVisitAt) : undefined,
           favoriteBarbermanId: cust.favoriteBarbermanId || undefined,
+          branch: txBranch,
           ...(cust.phone ? { phone: cust.phone } : {}),
           ...(cust.instagram ? { instagram: cust.instagram } : {}),
         },
@@ -2540,6 +2557,7 @@ async function processCheckoutMemoryFallback(payload: CheckoutPayload & { branch
           totalSpend: cust.totalSpend,
           lastVisitAt: cust.lastVisitAt ? new Date(cust.lastVisitAt) : undefined,
           favoriteBarbermanId: cust.favoriteBarbermanId || undefined,
+          branch: txBranch,
         },
       }).catch((e: any) => console.warn("⚠️ [checkout] Prisma customer upsert:", e?.message));
 

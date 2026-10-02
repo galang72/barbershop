@@ -34,6 +34,7 @@ export async function POST(req: NextRequest) {
       instagram: body.instagram?.trim() || null,
       address: body.address?.trim() || null,
       notes: body.notes?.trim() || null,
+      branch: body.branch?.trim() || "Telkom",
     });
 
     invalidateCache("customers");

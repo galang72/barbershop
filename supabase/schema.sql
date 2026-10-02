@@ -89,6 +89,7 @@ CREATE TABLE IF NOT EXISTS customers (
     instagram TEXT,
     address TEXT,
     notes TEXT,
+    branch TEXT DEFAULT 'Telkom',
     total_visits INT DEFAULT 0 NOT NULL,
     total_spend DOUBLE PRECISION DEFAULT 0 NOT NULL,
     last_visit_at TIMESTAMPTZ,
