@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getBarbermen, getServices, getProducts, getProductCategories, getBookings } from "@/lib/db";
+import { getTodayDateWIB } from "@/lib/utils";
 import { getAdminSession } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -10,7 +11,7 @@ export async function GET(req: NextRequest) {
     const session = await getAdminSession();
     const branch = session?.branch && session.branch !== "All" ? session.branch : undefined;
 
-    const todayStr = new Date().toISOString().split("T")[0];
+    const todayStr = getTodayDateWIB(); // WIB-aware date, not UTC
     const [barbermen, services, productsRaw, categories, settings, allBookings] = await Promise.all([
       getBarbermen(false, branch),
       getServices(false),

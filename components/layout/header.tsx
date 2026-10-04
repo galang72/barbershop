@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Menu, ShoppingCart, Clock, ArrowLeftRight, Building2, Crown, Shield } from "lucide-react";
@@ -12,8 +12,26 @@ interface HeaderProps {
 }
 
 export function Header({ onToggleMobile }: HeaderProps) {
-  const todayStr = formatDateIndo(new Date());
   const { user } = useUser();
+
+  // Live realtime WIB clock
+  const [now, setNow] = useState<Date | null>(null);
+  useEffect(() => {
+    setNow(new Date());
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const todayStr = now ? formatDateIndo(now) : "";
+  const timeStr = now
+    ? new Intl.DateTimeFormat("id-ID", {
+        timeZone: "Asia/Jakarta",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+      }).format(now)
+    : "";
 
   const getRoleBranchBadge = () => {
     if (!user) {
@@ -117,10 +135,13 @@ export function Header({ onToggleMobile }: HeaderProps) {
 
       {/* RIGHT: Quick Action Buttons & Status */}
       <div className="flex items-center gap-2 md:gap-2.5 flex-shrink-0">
-        {/* Desktop Date Display (only on 2xl / very wide screens to prevent crowding) */}
+        {/* Desktop Date & Realtime Clock (WIB) */}
         <div className="hidden 2xl:flex items-center gap-1.5 text-xs text-slate-600 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200 whitespace-nowrap">
           <Clock className="w-3.5 h-3.5 text-blue-600" />
-          <span>Hari ini: <strong className="text-slate-800 font-semibold">{todayStr}</strong></span>
+          <span>
+            {todayStr && <strong className="text-slate-800 font-semibold">{todayStr}</strong>}
+            {timeStr && <span className="ml-1.5 font-mono text-blue-700 font-bold">{timeStr}</span>}
+          </span>
         </div>
 
         {/* Operational Status Dot */}

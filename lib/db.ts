@@ -1,6 +1,7 @@
 import prisma from "./prisma";
 import bcrypt from "bcryptjs";
 import { format, startOfDay, endOfDay, subDays, startOfMonth, endOfMonth, startOfYear, endOfYear } from "date-fns";
+import { getWIBDayRange, getWIBMonthRange, getTodayDateWIB } from "./utils";
 import fs from "fs";
 import path from "path";
 
@@ -3359,29 +3360,31 @@ export async function getDashboardData(
   const hasPersistentDb = !!dbUrl && !dbUrl.includes("[YOUR-") && !dbUrl.includes("placeholder");
 
   const now = new Date();
-  let startDate = startOfDay(now);
-  let endDate = endOfDay(now);
+  // Use WIB-aware day boundaries (Vercel runs UTC, this ensures midnight WIB is used)
+  const todayWIB = getWIBDayRange();
+  let startDate = todayWIB.start;
+  let endDate = todayWIB.end;
 
   if (filter === "yesterday") {
-    const yest = subDays(now, 1);
-    startDate = startOfDay(yest);
-    endDate = endOfDay(yest);
+    const { start, end } = getWIBDayRange(subDays(now, 1));
+    startDate = start;
+    endDate = end;
   } else if (filter === "week") {
-    startDate = startOfDay(subDays(now, 7));
-    endDate = endOfDay(now);
+    startDate = getWIBDayRange(subDays(now, 7)).start;
+    endDate = todayWIB.end;
   } else if (filter === "month") {
-    startDate = startOfMonth(now);
-    endDate = endOfMonth(now);
+    const { start, end } = getWIBMonthRange();
+    startDate = start;
+    endDate = end;
   } else if (filter === "year") {
     startDate = startOfYear(now);
     endDate = endOfYear(now);
   } else if (filter === "custom" && customStart && customEnd) {
-    startDate = startOfDay(new Date(customStart));
-    endDate = endOfDay(new Date(customEnd));
+    startDate = getWIBDayRange(customStart).start;
+    endDate = getWIBDayRange(customEnd).end;
   }
 
-  const startMonth = startOfMonth(now);
-  const endMonth = endOfMonth(now);
+  const { start: startMonth, end: endMonth } = getWIBMonthRange();
 
   // 🔑 Supabase mode: query Prisma LANGSUNG (CEPAT & AMAN DARI ERROR KOLOM)
   if (hasPersistentDb) {
@@ -3419,9 +3422,9 @@ export async function getDashboardData(
         },
       }).catch(() => []),
 
-      // Booking hari ini
+      // Booking hari ini (WIB-aware)
       prisma.booking.count({
-        where: { bookingDate: { gte: startOfDay(now), lte: endOfDay(now) } },
+        where: { bookingDate: { gte: todayWIB.start, lte: todayWIB.end } },
       }).catch(() => 0),
 
       // Total member aktif
@@ -3457,7 +3460,7 @@ export async function getDashboardData(
       (branch && branch !== "All")
         ? prisma.booking.count({
             where: {
-              bookingDate: { gte: startOfDay(now), lte: endOfDay(now) },
+              bookingDate: { gte: todayWIB.start, lte: todayWIB.end },
               barberman: { workingBranch: branch },
             },
           }).catch(() => 0)
@@ -3546,8 +3549,8 @@ export async function getDashboardData(
     }
 
     const [bkTelkom, bkSuta] = await Promise.all([
-      prisma.booking.count({ where: { bookingDate: { gte: startOfDay(now), lte: endOfDay(now) }, barberman: { workingBranch: "Telkom" } } }).catch(() => 0),
-      prisma.booking.count({ where: { bookingDate: { gte: startOfDay(now), lte: endOfDay(now) }, barberman: { workingBranch: "Suta" } } }).catch(() => 0),
+      prisma.booking.count({ where: { bookingDate: { gte: todayWIB.start, lte: todayWIB.end }, barberman: { workingBranch: "Telkom" } } }).catch(() => 0),
+      prisma.booking.count({ where: { bookingDate: { gte: todayWIB.start, lte: todayWIB.end }, barberman: { workingBranch: "Suta" } } }).catch(() => 0),
     ]);
 
     const telkomMetrics = calcBranchStatsDirect("Telkom");
@@ -3611,7 +3614,7 @@ export async function getDashboardData(
 
     let bks = memoryDB.bookings.filter((b: any) => {
       const d = new Date(b.bookingDate);
-      return d >= startOfDay(now) && d <= endOfDay(now);
+      return d >= todayWIB.start && d <= todayWIB.end;
     });
     if (bFilter && bFilter !== "All") {
       bks = bks.filter((b: any) => b.branch === bFilter);
@@ -3841,8 +3844,10 @@ export async function getDailyReport(dateStr?: string, branch?: string) {
       targetDate = new Date(dateStr);
     }
   }
-  const start = startOfDay(targetDate);
-  const end = endOfDay(targetDate);
+  // Use WIB-aware boundaries: pass dateStr so we use the exact WIB day
+  const wibRange = dateStr ? getWIBDayRange(dateStr) : getWIBDayRange();
+  const start = wibRange.start;
+  const end = wibRange.end;
 
   const [pomadeReport, tonicPowderReport] = await Promise.all([
     getCategoryReport("pomade", start, end, branch),
