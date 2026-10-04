@@ -21,12 +21,20 @@ import { Badge } from "@/components/ui/badge";
 import { Modal } from "@/components/ui/modal";
 import { formatRupiah } from "@/lib/utils";
 
+// Client-side cache for instant display
+let _barbermenClientCache: {
+  barbermen: any[];
+  dashboardStats: any;
+  session: any;
+  assignments: any[];
+} | null = null;
+
 export default function BarbermanPage() {
-  const [barbermen, setBarbermen] = useState<any[]>([]);
-  const [assignments, setAssignments] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [dashboardStats, setDashboardStats] = useState<any>(null);
-  const [session, setSession] = useState<any>(null);
+  const [barbermen, setBarbermen] = useState<any[]>(_barbermenClientCache?.barbermen || []);
+  const [assignments, setAssignments] = useState<any[]>(_barbermenClientCache?.assignments || []);
+  const [loading, setLoading] = useState(!_barbermenClientCache);
+  const [dashboardStats, setDashboardStats] = useState<any>(_barbermenClientCache?.dashboardStats || null);
+  const [session, setSession] = useState<any>(_barbermenClientCache?.session || null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -40,23 +48,35 @@ export default function BarbermanPage() {
   const myBranch = session?.branch || session?.user?.branch || "";
 
   const loadData = async () => {
-    setLoading(true);
+    if (!_barbermenClientCache) setLoading(true);
     try {
       const t = Date.now();
       const [resB, resDash, resSess, resAsg] = await Promise.all([
-        fetch(`/api/barbermen?all=true&_t=${t}`, { cache: "no-store" }),
-        fetch(`/api/dashboard?filter=month&_t=${t}`, { cache: "no-store" }),
-        fetch(`/api/auth/me?_t=${t}`, { cache: "no-store" }),
-        fetch(`/api/barbermen/assignment?_t=${t}`, { cache: "no-store" }),
+        fetch(`/api/barbermen?all=true&_t=${t}`),
+        fetch(`/api/dashboard?filter=month&_t=${t}`),
+        fetch(`/api/auth/me?_t=${t}`),
+        fetch(`/api/barbermen/assignment?_t=${t}`),
       ]);
       const dataB = await resB.json();
       const dataDash = await resDash.json();
       const dataSess = await resSess.json();
       const dataAsg = await resAsg.json();
-      setBarbermen(Array.isArray(dataB) ? dataB : []);
+
+      const newBarbermen = Array.isArray(dataB) ? dataB : [];
+      const newAssignments = Array.isArray(dataAsg?.assignments) ? dataAsg.assignments : [];
+      const newSession = dataSess?.user || dataSess;
+
+      _barbermenClientCache = {
+        barbermen: newBarbermen,
+        dashboardStats: dataDash,
+        session: newSession,
+        assignments: newAssignments,
+      };
+
+      setBarbermen(newBarbermen);
       setDashboardStats(dataDash);
-      setSession(dataSess?.user || dataSess);
-      setAssignments(Array.isArray(dataAsg?.assignments) ? dataAsg.assignments : []);
+      setSession(newSession);
+      setAssignments(newAssignments);
     } catch (e) {
       console.error(e);
     } finally {
@@ -64,7 +84,15 @@ export default function BarbermanPage() {
     }
   };
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    if (_barbermenClientCache) {
+      setBarbermen(_barbermenClientCache.barbermen);
+      setDashboardStats(_barbermenClientCache.dashboardStats);
+      setSession(_barbermenClientCache.session);
+      setAssignments(_barbermenClientCache.assignments);
+    }
+    loadData();
+  }, []);
 
   const getStatus = (b: any) => {
     if (!b.isActive) return "LIBUR";

@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
     const cacheKey = `services:${includeInactive}`;
     const data = await withCache(cacheKey, () => getServices(includeInactive), TTL.SERVICES);
     return NextResponse.json(data, {
-      headers: { "Cache-Control": "no-store, no-cache, must-revalidate" },
+      headers: { "Cache-Control": "public, s-maxage=30, stale-while-revalidate=60" },
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });

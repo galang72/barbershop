@@ -29,23 +29,32 @@ import { exportToExcel, exportToCSV } from "@/lib/export";
 
 import { useUser } from "@/lib/user-context";
 
+// Client-side module-level cache for instant 0ms tab-switching without lag
+let _dashboardClientCache: Record<string, any> = {};
+
 export default function DashboardPage() {
   const [filter, setFilter] = useState("today");
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [data, setData] = useState<any>(null);
   const { user } = useUser();
 
+  const cacheKey = `${filter}:${user?.role || ""}:${user?.branch || ""}`;
+  const [data, setData] = useState<any>(_dashboardClientCache[cacheKey] || null);
+  const [loading, setLoading] = useState(!_dashboardClientCache[cacheKey]);
+
   const fetchDashboard = async () => {
-    setLoading(true);
+    // Only show loading spinner if we don't have cached data yet
+    if (!_dashboardClientCache[cacheKey]) {
+      setLoading(true);
+    }
     try {
       let url = `/api/dashboard?filter=${filter}&_t=${Date.now()}`;
       if (filter === "custom" && customStart && customEnd) {
         url += `&start=${customStart}&end=${customEnd}`;
       }
-      const res = await fetch(url, { cache: "no-store" });
+      const res = await fetch(url);
       const json = await res.json();
+      _dashboardClientCache[cacheKey] = json;
       setData(json);
     } catch (err) {
       console.error("Failed to load dashboard data", err);
@@ -55,8 +64,11 @@ export default function DashboardPage() {
   };
 
   useEffect(() => {
+    if (_dashboardClientCache[cacheKey]) {
+      setData(_dashboardClientCache[cacheKey]);
+    }
     fetchDashboard();
-  }, [filter]);
+  }, [filter, cacheKey]);
 
   const handleApplyCustom = (e: React.FormEvent) => {
     e.preventDefault();

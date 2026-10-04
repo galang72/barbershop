@@ -16,16 +16,20 @@ import { exportToExcel, exportToCSV } from "@/lib/export";
 import { ReportHeader } from "@/components/reports/report-header";
 import { ReportFooter } from "@/components/reports/report-footer";
 
+// Client-side cache for instant display
+let _dailyReportClientCache: Record<string, any> = {};
+
 export default function LaporanHarianPage() {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
-  const [report, setReport] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const [report, setReport] = useState<any>(_dailyReportClientCache[selectedDate] || null);
+  const [loading, setLoading] = useState(!_dailyReportClientCache[selectedDate]);
 
   const fetchReport = async () => {
-    setLoading(true);
+    if (!_dailyReportClientCache[selectedDate]) setLoading(true);
     try {
-      const res = await fetch(`/api/reports/daily?date=${selectedDate}&_t=${Date.now()}`, { cache: "no-store" });
+      const res = await fetch(`/api/reports/daily?date=${selectedDate}&_t=${Date.now()}`);
       const json = await res.json();
+      _dailyReportClientCache[selectedDate] = json;
       setReport(json);
     } catch (e) {
       console.error(e);
@@ -35,6 +39,9 @@ export default function LaporanHarianPage() {
   };
 
   useEffect(() => {
+    if (_dailyReportClientCache[selectedDate]) {
+      setReport(_dailyReportClientCache[selectedDate]);
+    }
     fetchReport();
   }, [selectedDate]);
 

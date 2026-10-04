@@ -30,13 +30,23 @@ import { Modal } from "@/components/ui/modal";
 import { ReceiptModal } from "@/components/kasir/receipt-modal";
 import { formatRupiah } from "@/lib/utils";
 
+// Module-level client cache for instant 0ms cashier page opening
+let _kasirClientCache: {
+  barbermen: any[];
+  services: any[];
+  products: any[];
+  categories: any[];
+  shopSettings: any;
+  user: any;
+} | null = null;
+
 export default function KasirPage() {
-  // Master data
-  const [barbermen, setBarbermen] = useState<any[]>([]);
-  const [services, setServices] = useState<any[]>([]);
-  const [products, setProducts] = useState<any[]>([]);
-  const [categories, setCategories] = useState<any[]>([]);
-  const [shopSettings, setShopSettings] = useState<any>(null);
+  // Master data initialized from cache if available (0ms instant!)
+  const [barbermen, setBarbermen] = useState<any[]>(_kasirClientCache?.barbermen || []);
+  const [services, setServices] = useState<any[]>(_kasirClientCache?.services || []);
+  const [products, setProducts] = useState<any[]>(_kasirClientCache?.products || []);
+  const [categories, setCategories] = useState<any[]>(_kasirClientCache?.categories || []);
+  const [shopSettings, setShopSettings] = useState<any>(_kasirClientCache?.shopSettings || null);
 
   // Active Category filter in item list ("all", "HAIRCUT", "cat_pomade", etc.)
   const [activeItemTab, setActiveItemTab] = useState<string>("ALL");
@@ -111,15 +121,36 @@ export default function KasirPage() {
         );
       }
 
-      setServices(Array.isArray(data.services) ? data.services : []);
-      setProducts(Array.isArray(data.products) ? data.products : []);
-      setCategories(Array.isArray(data.categories) ? data.categories : []);
+      const newServices = Array.isArray(data.services) ? data.services : [];
+      const newProducts = Array.isArray(data.products) ? data.products : [];
+      const newCategories = Array.isArray(data.categories) ? data.categories : [];
+
+      _kasirClientCache = {
+        barbermen: filteredBarbermen,
+        services: newServices,
+        products: newProducts,
+        categories: newCategories,
+        shopSettings: data.shopSettings,
+        user: data.user,
+      };
+
+      setServices(newServices);
+      setProducts(newProducts);
+      setCategories(newCategories);
     } catch (err) {
       console.error("Failed to load cashier data", err);
     }
   };
 
   useEffect(() => {
+    if (_kasirClientCache) {
+      setSession(_kasirClientCache.user);
+      setShopSettings(_kasirClientCache.shopSettings);
+      setBarbermen(_kasirClientCache.barbermen);
+      setServices(_kasirClientCache.services);
+      setProducts(_kasirClientCache.products);
+      setCategories(_kasirClientCache.categories);
+    }
     loadMasterData();
   }, []);
 

@@ -2925,7 +2925,13 @@ export async function getCashLedger(branch?: string) {
         item.description?.toLowerCase().includes("modal awal");
       if (item.type === "CASH_IN" && !isInitFloat) {
         totalCashIn += item.amount;
-        if (item.paymentMethod === "QRIS") {
+        // Deteksi QRIS via category (bukan paymentMethod yg tidak ada di DB)
+        const isQris = item.category?.includes("QRIS") ||
+          item.category?.includes("TRANSFER") ||
+          item.category?.includes("DEBIT") ||
+          item.description?.includes("QRIS") ||
+          item.description?.includes("QR");
+        if (isQris) {
           qrisIncome += item.amount;
         } else {
           physicalCashIn += item.amount;
@@ -2972,7 +2978,12 @@ export async function getCashLedger(branch?: string) {
       item.description?.toLowerCase().includes("modal awal");
     if (item.type === "CASH_IN" && !isInitFloat) {
       totalCashIn += item.amount;
-      const isQR = item.paymentMethod === "QRIS";
+      // Deteksi QRIS/digital via category (paymentMethod tidak ada di DB schema)
+      const isQR = item.category?.includes("QRIS") ||
+        item.category?.includes("TRANSFER") ||
+        item.category?.includes("DEBIT") ||
+        item.description?.includes("QRIS") ||
+        item.description?.includes("QR");
       if (isQR) totalQrisIncome += item.amount;
       else totalPhysicalCashIn += item.amount;
 
@@ -3158,8 +3169,13 @@ export async function getDashboardData(
         select: { id: true, stock: true, minStock: true },
       }).catch(() => []),
 
-      // Cash transactions
-      prisma.cashTransaction.findMany().catch(() => []),
+      // Cash transactions — filter hanya tahun berjalan agar tidak load semua historical data
+      prisma.cashTransaction.findMany({
+        where: {
+          createdAt: { gte: startOfYear(now) },
+          ...(branch && branch !== "All" ? { branch } : {}),
+        },
+      }).catch(() => []),
 
       // Semua barber aktif
       prisma.barberman.findMany({ where: { isActive: true } }).catch(() => []),
@@ -3181,20 +3197,22 @@ export async function getDashboardData(
       // Low stock
       const lowStock = productsList.filter((p: any) => Number(p.stock || 0) <= Number(p.minStock || 5)).length;
 
-      // Cash calculation
-      let cashIn = 0, cashOut = 0;
+      // Cash calculation — hanya dari cashTransactions (sumber tunggal)
+      // cashTxs sudah include semua jenis: Modal Awal, Penjualan Kasir, Penjualan QRIS, pengeluaran
+      let physicalCashIn = 0, cashOut = 0;
       for (const c of cashTxs) {
-        if (bFilter && bFilter !== "All" && c.branch && c.branch !== bFilter) continue;
-        if (c.type === "CASH_IN") cashIn += Number(c.amount || 0);
-        else if (c.type === "CASH_OUT") cashOut += Number(c.amount || 0);
-      }
-      for (const t of txs) {
-        if (t.paymentMethod !== "QRIS") {
-          cashIn += Number(t.grandTotal || 0);
+        if (bFilter && bFilter !== "All" && c.branch && c.branch !== bFilter && c.branch !== "All") continue;
+        if (c.type === "CASH_IN") {
+          // Hanya hitung uang fisik di laci (bukan QRIS/TRANSFER/DEBIT)
+          const isDigital = c.category?.includes("QRIS") || c.category?.includes("TRANSFER") || c.category?.includes("DEBIT");
+          if (!isDigital) physicalCashIn += Number(c.amount || 0);
+        } else if (c.type === "CASH_OUT") {
+          cashOut += Number(c.amount || 0);
         }
       }
+      // CATATAN: TIDAK perlu loop txs lagi karena processCheckout sudah create cashTransaction
       const initF = bFilter === "Suta" ? initFloatSuta : bFilter === "Telkom" ? initFloatTelkom : (initFloatTelkom + initFloatSuta);
-      const cashInHand = initF + cashIn - cashOut;
+      const cashInHand = physicalCashIn - cashOut;
 
       return {
         todayCustomer: txs.length,

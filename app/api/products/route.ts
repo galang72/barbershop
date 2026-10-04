@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
     }, TTL.PRODUCTS);
 
     return NextResponse.json(result, {
-      headers: { "Cache-Control": "no-store, no-cache, must-revalidate" },
+      headers: { "Cache-Control": "public, s-maxage=20, stale-while-revalidate=60" },
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });

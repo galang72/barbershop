@@ -17,18 +17,23 @@ const MONTH_NAMES = [
   "Juli", "Agustus", "September", "Oktober", "November", "Desember"
 ];
 
+// Client-side cache for instant display
+let _monthlyReportClientCache: Record<string, any> = {};
+
 export default function LaporanBulananPage() {
   const currentDate = new Date();
   const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(currentDate.getMonth() + 1); // 1-12
-  const [data, setData] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const cacheKey = `${selectedYear}-${selectedMonth}`;
+  const [data, setData] = useState<any>(_monthlyReportClientCache[cacheKey] || null);
+  const [loading, setLoading] = useState(!_monthlyReportClientCache[cacheKey]);
 
   const fetchMonthly = async () => {
-    setLoading(true);
+    if (!_monthlyReportClientCache[cacheKey]) setLoading(true);
     try {
-      const res = await fetch(`/api/reports/monthly?year=${selectedYear}&month=${selectedMonth}&_t=${Date.now()}`, { cache: "no-store" });
+      const res = await fetch(`/api/reports/monthly?year=${selectedYear}&month=${selectedMonth}&_t=${Date.now()}`);
       const json = await res.json();
+      _monthlyReportClientCache[cacheKey] = json;
       setData(json);
     } catch (e) {
       console.error("Gagal mengambil laporan bulanan:", e);
@@ -38,6 +43,9 @@ export default function LaporanBulananPage() {
   };
 
   useEffect(() => {
+    if (_monthlyReportClientCache[cacheKey]) {
+      setData(_monthlyReportClientCache[cacheKey]);
+    }
     fetchMonthly();
   }, [selectedYear, selectedMonth]);
 

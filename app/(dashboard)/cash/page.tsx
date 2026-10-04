@@ -21,13 +21,18 @@ import { Modal } from "@/components/ui/modal";
 import { formatRupiah, formatDateTimeIndo } from "@/lib/utils";
 import { exportToExcel, exportToCSV } from "@/lib/export";
 
+// Client-side cache for instant display
+let _cashClientCache: any = null;
+
 export default function CashManagementPage() {
-  const [cashData, setCashData] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const [cashData, setCashData] = useState<any>(_cashClientCache);
+  const [loading, setLoading] = useState(!_cashClientCache);
   const [session, setSession] = useState<any>(null);
 
   // Reconciliation state (Cash fisik vs Sistem)
-  const [physicalCash, setPhysicalCash] = useState<number>(0);
+  const [physicalCash, setPhysicalCash] = useState<number>(
+    _cashClientCache ? (_cashClientCache.cashInHand ?? _cashClientCache.totalCashInHand ?? 0) : 0
+  );
 
   // Edit Float Modal State
   const [editFloatModalOpen, setEditFloatModalOpen] = useState(false);
@@ -45,12 +50,14 @@ export default function CashManagementPage() {
   const isOwner = session?.role === "OWNER";
 
   const fetchCash = async () => {
-    setLoading(true);
+    if (!_cashClientCache) setLoading(true);
     try {
       const res = await fetch(`/api/cash?_t=${Date.now()}`, { cache: "no-store" });
       const json = await res.json();
+      _cashClientCache = json;
       setCashData(json);
-      setPhysicalCash(json.systemCash || 0);
+      const expectedPhysical = json.cashInHand ?? (json.totalCashInHand ?? 0);
+      setPhysicalCash(expectedPhysical);
     } catch (e) {
       console.error(e);
     } finally {
@@ -59,6 +66,11 @@ export default function CashManagementPage() {
   };
 
   useEffect(() => {
+    if (_cashClientCache) {
+      setCashData(_cashClientCache);
+      const expected = _cashClientCache.cashInHand ?? (_cashClientCache.totalCashInHand ?? 0);
+      setPhysicalCash(expected);
+    }
     fetchCash();
     fetch("/api/auth/me")
       .then((r) => r.json())
@@ -134,8 +146,8 @@ export default function CashManagementPage() {
     }
   };
 
-  const systemCash = cashData?.systemCash || 0;
-  const selisih = physicalCash - systemCash;
+  const expectedPhysicalCash = cashData?.cashInHand ?? (cashData?.totalCashInHand ?? 0);
+  const selisih = physicalCash - expectedPhysicalCash;
 
   const handleExport = (type: "excel" | "csv") => {
     const list = cashData?.transactions || [];
@@ -326,8 +338,8 @@ export default function CashManagementPage() {
         {/* RECONCILIATION RESULT BAR */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4 text-center">
           <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
-            <div className="text-xs text-slate-500 font-medium">Cash Menurut Sistem</div>
-            <div className="text-lg font-black text-slate-900 mt-0.5">{formatRupiah(systemCash)}</div>
+            <div className="text-xs text-slate-500 font-medium">Uang Fisik Menurut Sistem</div>
+            <div className="text-lg font-black text-slate-900 mt-0.5">{formatRupiah(expectedPhysicalCash)}</div>
           </div>
 
           <div className="p-3.5 rounded-2xl bg-blue-50/60 border border-blue-200">
@@ -397,7 +409,12 @@ export default function CashManagementPage() {
               ) : (
                 cashData?.transactions?.map((c: any) => {
                   const isIn = c.type === "CASH_IN";
-                  const isQR = c.paymentMethod === "QRIS" || c.description?.toLowerCase().includes("qr");
+                  const isQR =
+                    c.category?.includes("QRIS") ||
+                    c.category?.includes("TRANSFER") ||
+                    c.category?.includes("DEBIT") ||
+                    c.paymentMethod === "QRIS" ||
+                    c.description?.toLowerCase().includes("qr");
                   return (
                     <tr key={c.id} className="hover:bg-blue-50/40 transition-colors">
                       <td className="py-3.5 px-4 text-xs text-slate-500 font-medium whitespace-nowrap">
