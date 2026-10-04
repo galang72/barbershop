@@ -15,7 +15,9 @@ export async function GET(req: NextRequest) {
     const branch = resolveBranchFilter(session, searchParams.get("branch"));
 
     const bookings = await getBookings(date, branch);
-    return NextResponse.json(bookings);
+    return NextResponse.json(bookings, {
+      headers: { "Cache-Control": "public, s-maxage=10, stale-while-revalidate=30" },
+    });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }

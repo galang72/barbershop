@@ -345,12 +345,14 @@ export default function ProdukPage() {
                 </tr>
               ) : (
                 filtered.map((p) => {
-                  const telkomStock = p.stockTelkom ?? Math.floor(p.stock / 2);
-                  const sutaStock = p.stockSuta ?? (p.stock - telkomStock);
-                  const totalStock = p.stock;
-                  const isLow = totalStock <= p.minStock;
-                  const isTelkomLow = telkomStock <= Math.floor(p.minStock / 2);
-                  const isSutaLow = sutaStock <= Math.floor(p.minStock / 2);
+                  // stockTelkom & stockSuta come from raw SQL extra columns; 0 if not yet set
+                  const telkomStock = typeof p.stockTelkom === "number" ? p.stockTelkom : (p.stockTelkom != null ? Number(p.stockTelkom) : 0);
+                  const sutaStock = typeof p.stockSuta === "number" ? p.stockSuta : (p.stockSuta != null ? Number(p.stockSuta) : 0);
+                  // Total = sum of both branches (NOT the separate `stock` field which may be stale)
+                  const totalStock = telkomStock + sutaStock;
+                  const isLow = totalStock <= (p.minStock || 0);
+                  const isTelkomLow = telkomStock <= Math.floor((p.minStock || 0) / 2);
+                  const isSutaLow = sutaStock <= Math.floor((p.minStock || 0) / 2);
                   const profit = p.sellingPrice - p.costPrice;
                   return (
                     <tr key={p.id} className="hover:bg-blue-50/40 transition-colors">

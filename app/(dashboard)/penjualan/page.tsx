@@ -18,16 +18,20 @@ import { Button } from "@/components/ui/button";
 import { formatRupiah, formatDateTimeIndo } from "@/lib/utils";
 import { exportToExcel, exportToCSV } from "@/lib/export";
 
+// ⚡ Module-level SWR cache
+let _penjualanClientCache: any | null = null;
+
 export default function PenjualanPage() {
-  const [dailyData, setDailyData] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const [dailyData, setDailyData] = useState<any>(_penjualanClientCache || null);
+  const [loading, setLoading] = useState(!_penjualanClientCache);
 
   const fetchDaily = async () => {
-    setLoading(true);
+    if (!_penjualanClientCache) setLoading(true);
     try {
-      const res = await fetch(`/api/reports/daily?_t=${Date.now()}`, { cache: "no-store" });
+      const res = await fetch(`/api/reports/daily`);
       const json = await res.json();
       setDailyData(json);
+      _penjualanClientCache = json;
     } catch (e) {
       console.error(e);
     } finally {

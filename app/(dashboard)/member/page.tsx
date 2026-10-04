@@ -17,9 +17,12 @@ import { Modal } from "@/components/ui/modal";
 import { formatRupiah, formatDateIndo } from "@/lib/utils";
 import { exportToExcel, exportToCSV } from "@/lib/export";
 
+// ⚡ Module-level SWR cache — persists across navigations within the same session
+let _memberClientCache: any[] | null = null;
+
 export default function MemberPage() {
-  const [members, setMembers] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [members, setMembers] = useState<any[]>(_memberClientCache || []);
+  const [loading, setLoading] = useState(!_memberClientCache);
   const [search, setSearch] = useState("");
 
   // Modal Registrasi Member
@@ -36,12 +39,13 @@ export default function MemberPage() {
   const [extendDays, setExtendDays] = useState(30);
 
   const fetchMembers = async (q?: string) => {
-    setLoading(true);
+    if (!_memberClientCache) setLoading(true);
     try {
       const url = q ? `/api/members?q=${encodeURIComponent(q)}` : "/api/members";
       const res = await fetch(url);
       const json = await res.json();
       setMembers(json);
+      if (!q) _memberClientCache = json;
     } catch (e) {
       console.error(e);
     } finally {

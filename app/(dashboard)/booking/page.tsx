@@ -19,16 +19,19 @@ import { Card, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Modal } from "@/components/ui/modal";
-import { formatDateIndo } from "@/lib/utils";
+import { formatDateIndo, getTodayDateWIB } from "@/lib/utils";
+
+// ⚡ Module-level SWR cache — persists across navigations within the same session
+let _bookingClientCache: { bookings: any[]; barbermen: any[]; services: any[] } | null = null;
 
 export default function BookingPage() {
-  const [bookings, setBookings] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
+  const [bookings, setBookings] = useState<any[]>(_bookingClientCache?.bookings || []);
+  const [loading, setLoading] = useState(!_bookingClientCache);
+  const [selectedDate, setSelectedDate] = useState(getTodayDateWIB());
 
   // Master Data for Booking Form
-  const [barbermen, setBarbermen] = useState<any[]>([]);
-  const [services, setServices] = useState<any[]>([]);
+  const [barbermen, setBarbermen] = useState<any[]>(_bookingClientCache?.barbermen || []);
+  const [services, setServices] = useState<any[]>(_bookingClientCache?.services || []);
 
   // Add Booking Modal State
   const [modalOpen, setModalOpen] = useState(false);
@@ -37,17 +40,19 @@ export default function BookingPage() {
   const [barbermanId, setBarbermanId] = useState("");
   const [serviceId, setServiceId] = useState("");
   const [bookingTime, setBookingTime] = useState("10:00");
-  const [bookingDate, setBookingDate] = useState(new Date().toISOString().split("T")[0]);
+  const [bookingDate, setBookingDate] = useState(getTodayDateWIB());
   const [notes, setNotes] = useState("");
   const [dpPaid, setDpPaid] = useState(20000); // DP default Rp 20.000
   const [submitting, setSubmitting] = useState(false);
 
-  const fetchBookings = async () => {
-    setLoading(true);
+  const fetchBookings = async (date?: string) => {
+    if (!_bookingClientCache) setLoading(true);
     try {
-      const res = await fetch(`/api/bookings?date=${selectedDate}`);
+      const d = date || selectedDate;
+      const res = await fetch(`/api/bookings?date=${d}`);
       const json = await res.json();
       setBookings(json);
+      _bookingClientCache = { bookings: json, barbermen, services };
     } catch (err) {
       console.error(err);
     } finally {
