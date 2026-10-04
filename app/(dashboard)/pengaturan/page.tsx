@@ -133,7 +133,7 @@ export default function PengaturanPage() {
     const confirmMessage =
       mode === "clean"
         ? "PERINGATAN: Kosongkan semua riwayat transaksi, booking, dan pembayaran kasir?\n\nData Master (Barberman, Layanan, Produk, Akun Admin) tetap disimpan agar Anda bisa langsung mulai jualan riil!"
-        : "Reset data ke sampel demo default (3 Barberman Arie/Azis/Dani, produk, dan sampel transaksi demo)?";
+        : "Reset data ke sampel demo default (6 Barberman Telkom & Suta, produk, stok cabang, dan 30 transaksi demo Supabase)?";
 
     if (confirm(confirmMessage)) {
       setResetting(true);
@@ -440,7 +440,7 @@ export default function PengaturanPage() {
                   <span>Opsi 1: Reset ke Data Sampel Demo</span>
                 </div>
                 <p className="text-[11px] text-slate-500 leading-relaxed">
-                  Mengembalikan 3 barberman, produk lengkap, stok penuh, dan sampel transaksi demo untuk uji coba kasir & laporan.
+                  Mengembalikan 6 barberman (Telkom & Suta), produk lengkap, stok cabang, dan 30 sampel transaksi demo (20 Telkom + 10 Suta) ke database Supabase.
                 </p>
                 <Button
                   onClick={() => handleResetDemoData("demo")}

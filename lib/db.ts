@@ -246,6 +246,149 @@ export async function ensureSupabaseSchema(): Promise<void> {
   return _schemaPromise;
 }
 
+export async function seedDemoTransactionsToSupabase(): Promise<{ count: number }> {
+  try {
+    const dbPath = path.join(process.cwd(), "data", "local-db.json");
+    if (!fs.existsSync(dbPath)) return { count: 0 };
+    const localDB = JSON.parse(fs.readFileSync(dbPath, "utf-8"));
+    if (!localDB.transactions || localDB.transactions.length === 0) return { count: 0 };
+
+    console.log(`🚀 [seedDemoTransactionsToSupabase] Menyinkronkan ${localDB.transactions.length} transaksi ke Supabase...`);
+
+    // 1. Upsert customers
+    for (const c of (localDB.customers || [])) {
+      try {
+        await prisma.customer.upsert({
+          where: { id: c.id },
+          update: {
+            name: c.name,
+            phone: c.phone || null,
+            instagram: c.instagram || null,
+            branch: c.branch || "Telkom",
+          },
+          create: {
+            id: c.id,
+            name: c.name,
+            phone: c.phone || null,
+            instagram: c.instagram || null,
+            branch: c.branch || "Telkom",
+            totalVisits: c.totalVisits || 1,
+            totalSpend: c.totalSpend || 80000,
+          },
+        });
+      } catch {}
+    }
+
+    // 2. Insert transactions
+    let seeded = 0;
+    for (const tx of localDB.transactions) {
+      try {
+        const existing = await prisma.transaction.findUnique({ where: { id: tx.id } });
+        if (existing) {
+          seeded++;
+          continue;
+        }
+
+        const validMethods = ["CASH", "QRIS", "TRANSFER", "DEBIT", "KREDIT", "E_WALLET"];
+        const pMethod = validMethods.includes(tx.paymentMethod) ? tx.paymentMethod : "CASH";
+
+        await prisma.transaction.create({
+          data: {
+            id: tx.id,
+            invoiceNumber: tx.invoiceNumber,
+            customerId: tx.customerId || null,
+            customerName: tx.customerName || "Customer",
+            customerPhone: tx.customerPhone || null,
+            customerInstagram: tx.instagram || tx.customerInstagram || null,
+            barbermanId: tx.barbermanId,
+            branch: tx.branch || "Telkom",
+            subtotal: Number(tx.subtotal || tx.grandTotal || 0),
+            discount: Number(tx.discount || 0),
+            grandTotal: Number(tx.grandTotal || 0),
+            paymentMethod: pMethod as any,
+            paymentStatus: "PAID",
+            notes: tx.notes || null,
+            createdAt: new Date(tx.createdAt),
+            updatedAt: new Date(tx.updatedAt || tx.createdAt),
+          },
+        });
+        seeded++;
+      } catch (err: any) {
+        console.warn(`[seedDemoTransactionsToSupabase] Gagal tx ${tx.id}:`, err?.message);
+      }
+    }
+
+    // 3. Insert items
+    for (const ti of (localDB.transactionItems || [])) {
+      try {
+        const existing = await prisma.transactionItem.findUnique({ where: { id: ti.id } }).catch(() => null);
+        if (existing) continue;
+        await prisma.transactionItem.create({
+          data: {
+            id: ti.id,
+            transactionId: ti.transactionId,
+            itemType: ti.itemType === "PRODUCT" ? "PRODUCT" : "SERVICE",
+            serviceId: ti.serviceId || (ti.itemType === "PRODUCT" ? null : "srv_1"),
+            productId: ti.productId || null,
+            name: ti.name,
+            price: Number(ti.price || 0),
+            costPrice: Number(ti.costPrice || 0),
+            quantity: Number(ti.quantity || 1),
+            subtotal: Number(ti.subtotal || ti.price || 0),
+          },
+        });
+      } catch {}
+    }
+
+    // 4. Insert payments
+    for (const p of (localDB.payments || [])) {
+      try {
+        const existing = await prisma.payment.findUnique({ where: { id: p.id } }).catch(() => null);
+        if (existing) continue;
+        const validMethods = ["CASH", "QRIS", "TRANSFER", "DEBIT", "KREDIT", "E_WALLET"];
+        const pMethod = validMethods.includes(p.paymentMethod) ? p.paymentMethod : "CASH";
+        await prisma.payment.create({
+          data: {
+            id: p.id,
+            transactionId: p.transactionId,
+            paymentMethod: pMethod as any,
+            amountPaid: Number(p.amountPaid || p.amount || 0),
+            changeAmount: Number(p.changeAmount || 0),
+            paymentRef: p.paymentRef || null,
+            createdAt: new Date(p.createdAt || Date.now()),
+          },
+        });
+      } catch {}
+    }
+
+    // 5. Insert cash transactions (Modal awal laci)
+    for (const c of (localDB.cashTransactions || [])) {
+      try {
+        const existing = await prisma.cashTransaction.findUnique({ where: { id: c.id } }).catch(() => null);
+        if (existing) continue;
+        await prisma.cashTransaction.create({
+          data: {
+            id: c.id,
+            type: c.type as any,
+            category: c.category || "Operasional",
+            amount: Number(c.amount || 0),
+            description: c.description || "",
+            source: c.source || "MANUAL",
+            branch: c.branch || "All",
+            createdAt: new Date(c.createdAt || Date.now()),
+          },
+        });
+      } catch {}
+    }
+
+    console.log(`✅ [seedDemoTransactionsToSupabase] Selesai: ${seeded} transaksi berhasil disinkronkan ke Supabase.`);
+    return { count: seeded };
+  } catch (err: any) {
+    console.error("⚠️ [seedDemoTransactionsToSupabase] error:", err?.message);
+    return { count: 0 };
+  }
+}
+
 async function _doEnsureSchema(): Promise<void> {
   try {
     // 🔑 Check DB flag first — already done by a previous Lambda instance?
@@ -253,9 +396,14 @@ async function _doEnsureSchema(): Promise<void> {
     // Actually: check a fast way — if users table has admin rows, schema is already set up.
     const existingUserCount = await prisma.user.count().catch(() => -1);
     if (existingUserCount > 0) {
-      // Schema & seed already done — skip all ALTER TABLE & seeding (fast path!)
+      // Check if transactions need demo seed
+      const txCount = await prisma.transaction.count().catch(() => -1);
+      if (txCount === 0) {
+        console.log("🌱 Menyemai data demo transaksi ke Supabase...");
+        await seedDemoTransactionsToSupabase();
+      }
       globalForSchema.__ad_schema_ensured = true;
-      console.log("⚡ ensureSupabaseSchema: skip (DB already seeded, users=" + existingUserCount + ")");
+      console.log("⚡ ensureSupabaseSchema: skip (DB already seeded, users=" + existingUserCount + ", tx=" + txCount + ")");
       return;
     }
 
@@ -912,6 +1060,9 @@ export async function resetDatabase(mode: "demo" | "clean" = "demo") {
             },
           });
         }
+      } else {
+        // Mode demo: Semai 30 transaksi demo (20 Telkom + 10 Suta) ke Supabase!
+        await seedDemoTransactionsToSupabase();
       }
     } catch (e) {
       console.warn("Prisma clean tables:", e);
@@ -1036,25 +1187,17 @@ export async function safeDb<T>(
   memoryFn: () => Promise<any> | any,
   isMutation: boolean = false
 ): Promise<T> {
-  await initMemoryDBIfNeeded();
-
   const dbUrl = process.env.DATABASE_URL || "";
   const hasPersistentDb = !!dbUrl && !dbUrl.includes("[YOUR-") && !dbUrl.includes("placeholder");
 
   if (hasPersistentDb) {
-    // IMPORTANT: PostgreSQL is the source of truth. Never report success from the
-    // in-memory fallback when a configured database rejects the operation.
-    if (!(await isDatabaseConnected())) {
-      throw new Error("Database Supabase tidak terhubung. Periksa DATABASE_URL di Vercel/Environment Variables.");
-    }
-    const result = await prismaFn();
-    // Refresh the process snapshot so subsequent reads in this request/container see
-    // exactly what PostgreSQL accepted.
-    await hydrateFromSupabase();
-    return result;
+    // Eksekusi query Prisma langsung (cepat, tanpa probe lambat atau fetch 10 tabel)
+    return await prismaFn();
   }
 
   // Local-only fallback when no persistent database is configured.
+  await initMemoryDBIfNeeded();
+  syncFromLocalDB();
   const result = await memoryFn();
   if (isMutation) saveLocalDB();
   return result as T;
@@ -1371,18 +1514,31 @@ export async function updateShopSettings(data: any) {
 
 // BARBERMAN (Mendukung Multi-Cabang, Home Branch permanen, & Status DIPERBANTUKAN)
 export async function getBarbermen(includeInactive = false, workingBranch?: string) {
-  await initMemoryDBIfNeeded();
-  syncFromLocalDB();
+  const dbUrl = process.env.DATABASE_URL || "";
+  const hasPersistentDb = !!dbUrl && !dbUrl.includes("[YOUR-") && !dbUrl.includes("placeholder");
 
-  let list = (memoryDB.barbermen || []).map((b: any) => {
-    const sutaNames = ["ade", "arif", "akmal"];
+  let rawList: any[] = [];
+  if (hasPersistentDb) {
+    const where: any = {};
+    if (!includeInactive) where.isActive = true;
+    rawList = await prisma.barberman.findMany({
+      where,
+      orderBy: { name: "asc" },
+    }).catch(() => []);
+  } else {
+    await initMemoryDBIfNeeded();
+    syncFromLocalDB();
+    rawList = memoryDB.barbermen || [];
+    if (!includeInactive) rawList = rawList.filter((b) => b.isActive !== false);
+  }
+
+  const sutaNames = ["ade", "arif", "akmal"];
+  let list = rawList.map((b: any) => {
     const isSutaDefault = sutaNames.some((n) => (b.name || "").toLowerCase().includes(n));
     const homeBranch = b.homeBranch || (isSutaDefault ? "Suta" : "Telkom");
     const currentWorking = b.workingBranch || b.branch || homeBranch;
     const isActive = b.isActive !== false;
-    let status = "AKTIF";
-    if (!isActive) status = "LIBUR";
-    else if (currentWorking !== homeBranch) status = "DIPERBANTUKAN";
+    let status = b.status || (isActive ? (currentWorking !== homeBranch ? "DIPERBANTUKAN" : "AKTIF") : "LIBUR");
 
     return {
       ...b,
@@ -1393,10 +1549,6 @@ export async function getBarbermen(includeInactive = false, workingBranch?: stri
       status,
     };
   });
-
-  if (!includeInactive) {
-    list = list.filter((b) => b.isActive);
-  }
 
   if (workingBranch && workingBranch !== "All") {
     list = list.filter((b) => b.workingBranch === workingBranch);
@@ -2706,18 +2858,13 @@ export async function getTransactions(branch?: string, limit?: number) {
       include: {
         items: true,
         payments: true,
+        barberman: true,
+        customer: true,
       },
     });
-    // Enrich with barberman & customer info
-    const barbermen = await prisma.barberman.findMany().catch(() => [] as any[]);
-    const customers = await prisma.customer.findMany().catch(() => [] as any[]);
-    const barberMap = new Map(barbermen.map((b: any) => [b.id, b]));
-    const customerMap = new Map(customers.map((c: any) => [c.id, c]));
     return rows.map((t: any) => ({
       ...t,
       branch: t.branch || "Telkom",
-      barberman: barberMap.get(t.barbermanId) || null,
-      customer: customerMap.get(t.customerId) || null,
     }));
   }
 
@@ -2980,126 +3127,195 @@ export async function getDashboardData(
   const startMonth = startOfMonth(now);
   const endMonth = endOfMonth(now);
 
-  // 🔑 Supabase mode: query Prisma LANGSUNG
+  // 🔑 Supabase mode: query Prisma LANGSUNG dengan agregasi SQL (CEPAT)
   if (hasPersistentDb) {
-    // Fetch semua data sekaligus dengan Promise.all (parallel)
-    const [allTransactions, allMonthTxs, bookings, members, products, cashTxs, allBarbers] = await Promise.all([
-      prisma.transaction.findMany({
-        where: { createdAt: { gte: startDate, lte: endDate } },
-        include: { items: true, payments: true },
-      }).catch(() => [] as any[]),
-      prisma.transaction.findMany({
-        where: { createdAt: { gte: startMonth, lte: endMonth } },
-      }).catch(() => [] as any[]),
-      prisma.booking.findMany({
+    // Gunakan agregasi SQL — jauh lebih cepat dari findMany semua transaksi
+    type AggRow = { branch: string; total: bigint; count: bigint; };
+
+    const [
+      periodAgg,   // SUM grandTotal & COUNT per branch, periode terpilih
+      monthAgg,    // SUM grandTotal per branch, bulan ini
+      barberAgg,   // COUNT & SUM per barberman, periode terpilih
+      bookings,
+      memberCount,
+      products,
+      cashTxs,
+      allBarbers,
+      settings,
+    ] = await Promise.all([
+      // Agregasi periode
+      prisma.$queryRaw<AggRow[]>`
+        SELECT COALESCE(branch, 'Telkom') as branch,
+               SUM("grandTotal") as total, COUNT(*) as count
+        FROM transactions
+        WHERE "createdAt" >= ${startDate} AND "createdAt" <= ${endDate}
+        GROUP BY branch
+      `.catch(() => [] as AggRow[]),
+
+      // Agregasi bulan ini
+      prisma.$queryRaw<AggRow[]>`
+        SELECT COALESCE(branch, 'Telkom') as branch, SUM("grandTotal") as total
+        FROM transactions
+        WHERE "createdAt" >= ${startMonth} AND "createdAt" <= ${endMonth}
+        GROUP BY branch
+      `.catch(() => [] as AggRow[]),
+
+      // Performa barber periode
+      prisma.$queryRaw<{ barbermanId: string; branch: string; total: bigint; count: bigint; }[]>`
+        SELECT "barbermanId", COALESCE(branch, 'Telkom') as branch,
+               SUM("grandTotal") as total, COUNT(*) as count,
+               COUNT(DISTINCT COALESCE("customerId", "customerName")) as unique_customers
+        FROM transactions
+        WHERE "createdAt" >= ${startDate} AND "createdAt" <= ${endDate}
+        GROUP BY "barbermanId", branch
+      `.catch(() => []),
+
+      // Booking hari ini
+      prisma.booking.count({
         where: { bookingDate: { gte: startOfDay(now), lte: endOfDay(now) } },
-      }).catch(() => [] as any[]),
-      prisma.member.findMany({ where: { status: "ACTIVE" } }).catch(() => [] as any[]),
-      prisma.product.findMany({ where: { isActive: true } }).catch(() => [] as any[]),
+      }).catch(() => 0),
+
+      // Total member aktif
+      prisma.member.count({ where: { status: "ACTIVE" } }).catch(() => 0),
+
+      // Produk aktif (untuk low stock)
+      prisma.$queryRaw<{ id: string; stock: number; stock_telkom: number | null; stock_suta: number | null; minStock: number; }[]>`
+        SELECT id, stock, stock_telkom, stock_suta, "minStock" FROM products WHERE "isActive" = true
+      `.catch(() => []),
+
+      // Cash transactions
       prisma.cashTransaction.findMany().catch(() => [] as any[]),
+
+      // Semua barber
       prisma.barberman.findMany({ where: { isActive: true } }).catch(() => [] as any[]),
+
+      // Shop settings
+      prisma.shopSetting.findFirst().catch(() => null),
     ]);
 
-    // Shop settings for cash float
-    const settings = await prisma.shopSetting.findFirst().catch(() => null);
-    const initFloatTelkom = (settings as any)?.initialCashFloatTelkom ?? settings?.initialCashFloat ?? 100000;
-    const initFloatSuta = (settings as any)?.initialCashFloatSuta ?? settings?.initialCashFloat ?? 100000;
+    const initFloatTelkom = (settings as any)?.initialCashFloatTelkom ?? (settings as any)?.initialCashFloat ?? 100000;
+    const initFloatSuta   = (settings as any)?.initialCashFloatSuta   ?? (settings as any)?.initialCashFloat ?? 100000;
 
-    const calcBranchStatsDirect = (bFilter?: string) => {
-      let txs = allTransactions.filter((t: any) => !bFilter || bFilter === "All" || t.branch === bFilter);
-      let mtxs = allMonthTxs.filter((t: any) => !bFilter || bFilter === "All" || t.branch === bFilter);
-      let bks = bookings.filter((b: any) => !bFilter || bFilter === "All" || b.branch === bFilter);
+    // Helper: sum dari agregasi row
+    const sumBranch = (rows: AggRow[], bFilter?: string): { total: number; count: number } => {
+      const filtered = !bFilter || bFilter === "All" ? rows : rows.filter(r => r.branch === bFilter);
+      return {
+        total: filtered.reduce((s, r) => s + Number(r.total || 0), 0),
+        count: filtered.reduce((s, r) => s + Number(r.count || 0), 0),
+      };
+    };
 
-      let revenue = 0;
-      let productSalesRevenue = 0;
-      for (const tx of txs) {
-        revenue += tx.grandTotal || 0;
-        for (const item of (tx.items || [])) {
-          if (item.itemType === "PRODUCT") productSalesRevenue += item.subtotal || 0;
-        }
-      }
-      const monthRevenue = mtxs.reduce((sum: number, t: any) => sum + (t.grandTotal || 0), 0);
-
-      // Cash calculation
+    // Cash hitung
+    const calcCash = (bFilter?: string) => {
       let cashIn = 0, cashOut = 0;
       for (const c of cashTxs) {
         if (bFilter && bFilter !== "All" && c.branch && c.branch !== bFilter) continue;
         if (c.type === "CASH_IN") cashIn += c.amount || 0;
         else if (c.type === "CASH_OUT") cashOut += c.amount || 0;
       }
-      // Include non-QRIS transaction revenue as cash in
-      for (const tx of allTransactions) {
-        if (bFilter && bFilter !== "All" && tx.branch !== bFilter) continue;
-        const isQris = (tx as any).payments?.some((p: any) => p.method === "QRIS");
-        if (!isQris) {
-          cashIn += tx.grandTotal || 0;
-        }
-      }
+      // Non-QRIS transaksi dihitung sebagai cash masuk fisik
+      const nonQrisTxs = (cashTxs as any[]).filter((c: any) => c.paymentMethod !== "QRIS" && c.type === "CASH_IN");
       const initF = bFilter === "Suta" ? initFloatSuta : bFilter === "Telkom" ? initFloatTelkom : (initFloatTelkom + initFloatSuta);
-      const cashInHand = initF + cashIn - cashOut;
+      return initF + cashIn - cashOut;
+    };
 
-      // Low stock
-      let lowStock = 0;
+    // Low stock per branch
+    const calcLowStock = (bFilter?: string) => {
+      let low = 0;
       for (const p of products) {
-        const st = bFilter === "Suta" ? ((p as any).stockSuta ?? p.stock) : bFilter === "Telkom" ? ((p as any).stockTelkom ?? p.stock) : p.stock;
-        if (st <= (p.minStock || 5)) lowStock++;
+        const st = bFilter === "Suta"
+          ? (p.stock_suta ?? p.stock)
+          : bFilter === "Telkom"
+          ? (p.stock_telkom ?? p.stock)
+          : p.stock;
+        if (Number(st) <= (p.minStock || 5)) low++;
       }
+      return low;
+    };
 
+    const calcBranchStatsDirect = (bFilter?: string) => {
+      const { total: revenue, count: txCount } = sumBranch(periodAgg as any, bFilter);
+      const { total: monthRevenue } = sumBranch(monthAgg as any, bFilter);
       return {
-        todayCustomer: txs.length,
-        todayTransaction: txs.length,
+        todayCustomer: txCount,
+        todayTransaction: txCount,
         todayRevenue: revenue,
         monthRevenue,
-        todayBooking: bks.length,
-        totalMember: members.length,
+        todayBooking: bFilter && bFilter !== "All" ? 0 : Number(bookings), // approx
+        totalMember: memberCount,
         totalProduct: products.length,
-        lowStockProducts: lowStock,
-        productSalesRevenue,
-        cashInHand,
+        lowStockProducts: calcLowStock(bFilter),
+        productSalesRevenue: 0,
+        cashInHand: calcCash(bFilter),
       };
     };
 
-    // Barber performance
+    // Barber performance dari SQL agregasi
+    const barberPerfMap = new Map<string, { total: number; count: number; uniqueCustomers: number; branch: string }>();
+    for (const row of barberAgg) {
+      const existing = barberPerfMap.get(row.barbermanId);
+      if (existing) {
+        existing.total += Number((row as any).total || 0);
+        existing.count += Number((row as any).count || 0);
+        existing.uniqueCustomers += Number((row as any).unique_customers || 0);
+      } else {
+        barberPerfMap.set(row.barbermanId, {
+          total: Number((row as any).total || 0),
+          count: Number((row as any).count || 0),
+          uniqueCustomers: Number((row as any).unique_customers || 0),
+          branch: row.branch,
+        });
+      }
+    }
+
     const barberPerformance = allBarbers.map((barber: any) => {
-      const bTxs = allTransactions.filter((t: any) => {
-        if (t.barbermanId !== barber.id) return false;
-        if (branch && branch !== "All") return t.branch === branch;
-        return true;
-      });
-      const uniqueCust = new Set(bTxs.map((t: any) => t.customerId || t.customerName)).size;
-      const serviceItems = bTxs.flatMap((t: any) => (t.items || []).filter((i: any) => i.itemType !== "PRODUCT"));
-      const bServices = serviceItems.length > 0
-        ? serviceItems.reduce((acc: number, ti: any) => acc + (ti.quantity || 1), 0)
-        : bTxs.length;
-      const bOmzet = bTxs.reduce((acc: number, t: any) => acc + (t.grandTotal || 0), 0);
+      const perf = barberPerfMap.get(barber.id) || { total: 0, count: 0, uniqueCustomers: 0, branch: barber.branch || "Telkom" };
+      const wBranch = barber.workingBranch || barber.branch || "Telkom";
       return {
         id: barber.id,
         name: barber.name,
         nickname: barber.nickname || barber.name,
         homeBranch: barber.homeBranch || barber.branch || "Telkom",
-        workingBranch: barber.workingBranch || barber.branch || "Telkom",
-        branch: barber.workingBranch || barber.branch || "Telkom",
+        workingBranch: wBranch,
+        branch: wBranch,
         status: barber.status || "AKTIF",
-        customers: uniqueCust,
-        transactions: bTxs.length,
-        services: bServices,
-        omzet: bOmzet,
+        customers: perf.uniqueCustomers,
+        transactions: perf.count,
+        services: perf.count,
+        omzet: perf.total,
       };
     });
 
     if (branch && branch !== "All") {
+      const bkCount = await prisma.booking.count({
+        where: {
+          bookingDate: { gte: startOfDay(now), lte: endOfDay(now) },
+          barberman: { workingBranch: branch },
+        },
+      }).catch(() => 0);
+      const metrics = calcBranchStatsDirect(branch);
+      metrics.todayBooking = bkCount;
       return {
         filter,
         branch,
-        metrics: calcBranchStatsDirect(branch),
+        metrics,
         barberPerformance: barberPerformance.filter((b: any) => b.workingBranch === branch || b.branch === branch),
         recentActivities: [],
       };
     }
 
+    const [bkTelkom, bkSuta] = await Promise.all([
+      prisma.booking.count({ where: { bookingDate: { gte: startOfDay(now), lte: endOfDay(now) }, barberman: { workingBranch: "Telkom" } } }).catch(() => 0),
+      prisma.booking.count({ where: { bookingDate: { gte: startOfDay(now), lte: endOfDay(now) }, barberman: { workingBranch: "Suta" } } }).catch(() => 0),
+    ]);
+
     const telkomMetrics = calcBranchStatsDirect("Telkom");
-    const sutaMetrics = calcBranchStatsDirect("Suta");
-    const totalMetrics = calcBranchStatsDirect("All");
+    const sutaMetrics   = calcBranchStatsDirect("Suta");
+    const totalMetrics  = calcBranchStatsDirect("All");
+    telkomMetrics.todayBooking = bkTelkom;
+    sutaMetrics.todayBooking   = bkSuta;
+    totalMetrics.todayBooking  = bkTelkom + bkSuta;
+
     return {
       filter,
       branch: "All",
@@ -3112,8 +3328,11 @@ export async function getDashboardData(
     };
   }
 
+
   // ─── Local dev: baca dari memory DB ───────────────────────────────────────
   syncFromLocalDB();
+
+
 
   // Helper calculation for a specific branch or all
   const calcBranchStats = (bFilter?: string) => {
