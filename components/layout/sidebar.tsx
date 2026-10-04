@@ -28,6 +28,7 @@ import {
   Eye,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useUser } from "@/lib/user-context";
 
 interface SidebarProps {
   isOpenMobile?: boolean;
@@ -37,18 +38,8 @@ interface SidebarProps {
 export function Sidebar({ isOpenMobile, onCloseMobile }: SidebarProps) {
   const pathname = usePathname();
   const [isReportsOpen, setIsReportsOpen] = useState(pathname.startsWith("/laporan"));
-  const [user, setUser] = useState<any>(null);
+  const { user } = useUser();
 
-  useEffect(() => {
-    fetch("/api/auth/me")
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.authenticated && data.user) {
-          setUser(data.user);
-        }
-      })
-      .catch(() => {});
-  }, []);
 
   const isOwner = user?.role === "OWNER";
   const isAdmin = user?.role === "ADMIN_TELKOM" || user?.role === "ADMIN_SUTA";

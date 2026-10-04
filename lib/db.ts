@@ -835,7 +835,7 @@ export async function initMemoryDBIfNeeded() {
   // snapshot frequently so different requests/roles do not keep stale memory data.
   if (hasPersistentDb) {
     const now = Date.now();
-    if (!globalForDB.lastHydrateTime || now - globalForDB.lastHydrateTime > 1000) {
+    if (!globalForDB.lastHydrateTime || now - globalForDB.lastHydrateTime > 30000) {
       await ensureSupabaseSchema();
       await hydrateFromSupabase();
     }

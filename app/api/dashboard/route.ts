@@ -16,7 +16,8 @@ export async function GET(req: NextRequest) {
     // Backend Authorization: Admin Telkom -> 'Telkom', Admin Suta -> 'Suta', Owner -> searchParam or 'All'
     const branch = resolveBranchFilter(session, searchParams.get("branch"));
 
-    const data = await getDashboardData(filter, start, end, branch);
+    const cacheKey = `dashboard:${filter}:${start || ""}:${end || ""}:${branch || "all"}`;
+    const data = await withCache(cacheKey, () => getDashboardData(filter, start, end, branch), TTL.DASHBOARD);
 
     return NextResponse.json(data, {
       headers: {

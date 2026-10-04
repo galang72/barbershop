@@ -27,13 +27,15 @@ import { Badge } from "@/components/ui/badge";
 import { formatRupiah, formatDateTimeIndo } from "@/lib/utils";
 import { exportToExcel, exportToCSV } from "@/lib/export";
 
+import { useUser } from "@/lib/user-context";
+
 export default function DashboardPage() {
   const [filter, setFilter] = useState("today");
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<any>(null);
-  const [user, setUser] = useState<any>(null);
+  const { user } = useUser();
 
   const fetchDashboard = async () => {
     setLoading(true);
@@ -54,14 +56,6 @@ export default function DashboardPage() {
 
   useEffect(() => {
     fetchDashboard();
-    fetch("/api/auth/me")
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.authenticated && data.user) {
-          setUser(data.user);
-        }
-      })
-      .catch(() => {});
   }, [filter]);
 
   const handleApplyCustom = (e: React.FormEvent) => {
@@ -227,7 +221,7 @@ export default function DashboardPage() {
       {isOwner ? (
         <div className="space-y-5">
 
-          {/* KARTU PERBANDINGAN 2 CABANG — ringkas & jelas */}
+          {/* KARTU PERBANDINGAN 2 CABANG — ringkas, mendalam & eksekutif */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* TELKOM */}
             <Card className="border-sky-200 bg-gradient-to-br from-sky-50 to-white shadow-sm overflow-hidden">
@@ -236,33 +230,40 @@ export default function DashboardPage() {
                   <Building2 className="w-4 h-4 text-white" />
                   <span className="font-black text-white text-sm tracking-wide">CABANG TELKOM</span>
                 </div>
-                <span className="text-sky-200 text-[10px] font-bold uppercase">Operasional</span>
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                  <span className="text-sky-100 text-[10px] font-bold uppercase">Operasional Aktif</span>
+                </div>
               </div>
               <div className="grid grid-cols-3 divide-x divide-sky-100 text-center py-4">
                 <div className="px-3">
                   <div className="text-[10px] font-bold text-sky-500 uppercase tracking-wider">Customer</div>
-                  <div className="text-2xl font-black text-sky-800 mt-1">{telkomMetrics.todayCustomer}</div>
-                  <div className="text-[10px] text-slate-400 mt-0.5">periode ini</div>
+                  <div className="text-2xl font-black text-sky-900 mt-1">{telkomMetrics.todayCustomer}</div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">tamu dilayani</div>
                 </div>
                 <div className="px-3">
                   <div className="text-[10px] font-bold text-sky-500 uppercase tracking-wider">Transaksi</div>
-                  <div className="text-2xl font-black text-sky-800 mt-1">{telkomMetrics.todayTransaction}</div>
-                  <div className="text-[10px] text-slate-400 mt-0.5">struk</div>
+                  <div className="text-2xl font-black text-sky-900 mt-1">{telkomMetrics.todayTransaction}</div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">struk kasir</div>
                 </div>
                 <div className="px-3">
-                  <div className="text-[10px] font-bold text-sky-500 uppercase tracking-wider">Omzet</div>
+                  <div className="text-[10px] font-bold text-sky-500 uppercase tracking-wider">Omzet Periode</div>
                   <div className="text-xl font-black text-sky-700 mt-1">{formatRupiah(telkomMetrics.todayRevenue)}</div>
-                  <div className="text-[10px] text-slate-400 mt-0.5">layanan</div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">layanan & produk</div>
                 </div>
               </div>
-              <div className="grid grid-cols-2 divide-x divide-sky-100 border-t border-sky-100 text-center py-3 bg-sky-50/50">
+              <div className="grid grid-cols-3 divide-x divide-sky-100 border-t border-sky-100 text-center py-3 bg-sky-50/50">
                 <div className="px-3">
-                  <div className="text-[10px] font-bold text-sky-400 uppercase">Booking</div>
-                  <div className="text-lg font-black text-sky-800">{telkomMetrics.todayBooking}</div>
+                  <div className="text-[10px] font-bold text-sky-600 uppercase">Cash di Laci</div>
+                  <div className="text-sm font-black text-sky-900 mt-0.5">{formatRupiah(telkomMetrics.cashInHand || 0)}</div>
                 </div>
                 <div className="px-3">
-                  <div className="text-[10px] font-bold text-sky-400 uppercase">Bulan Ini</div>
-                  <div className="text-sm font-black text-sky-700">{formatRupiah(telkomMetrics.monthRevenue)}</div>
+                  <div className="text-[10px] font-bold text-sky-600 uppercase">Omzet Bulan Ini</div>
+                  <div className="text-sm font-black text-sky-800 mt-0.5">{formatRupiah(telkomMetrics.monthRevenue)}</div>
+                </div>
+                <div className="px-3">
+                  <div className="text-[10px] font-bold text-sky-600 uppercase">Booking Hari Ini</div>
+                  <div className="text-sm font-black text-sky-900 mt-0.5">{telkomMetrics.todayBooking} reservasi</div>
                 </div>
               </div>
             </Card>
@@ -274,59 +275,76 @@ export default function DashboardPage() {
                   <Building2 className="w-4 h-4 text-white" />
                   <span className="font-black text-white text-sm tracking-wide">CABANG SUTA</span>
                 </div>
-                <span className="text-indigo-200 text-[10px] font-bold uppercase">Operasional</span>
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                  <span className="text-indigo-100 text-[10px] font-bold uppercase">Operasional Aktif</span>
+                </div>
               </div>
               <div className="grid grid-cols-3 divide-x divide-indigo-100 text-center py-4">
                 <div className="px-3">
                   <div className="text-[10px] font-bold text-indigo-500 uppercase tracking-wider">Customer</div>
-                  <div className="text-2xl font-black text-indigo-800 mt-1">{sutaMetrics.todayCustomer}</div>
-                  <div className="text-[10px] text-slate-400 mt-0.5">periode ini</div>
+                  <div className="text-2xl font-black text-indigo-900 mt-1">{sutaMetrics.todayCustomer}</div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">tamu dilayani</div>
                 </div>
                 <div className="px-3">
                   <div className="text-[10px] font-bold text-indigo-500 uppercase tracking-wider">Transaksi</div>
-                  <div className="text-2xl font-black text-indigo-800 mt-1">{sutaMetrics.todayTransaction}</div>
-                  <div className="text-[10px] text-slate-400 mt-0.5">struk</div>
+                  <div className="text-2xl font-black text-indigo-900 mt-1">{sutaMetrics.todayTransaction}</div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">struk kasir</div>
                 </div>
                 <div className="px-3">
-                  <div className="text-[10px] font-bold text-indigo-500 uppercase tracking-wider">Omzet</div>
+                  <div className="text-[10px] font-bold text-indigo-500 uppercase tracking-wider">Omzet Periode</div>
                   <div className="text-xl font-black text-indigo-700 mt-1">{formatRupiah(sutaMetrics.todayRevenue)}</div>
-                  <div className="text-[10px] text-slate-400 mt-0.5">layanan</div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">layanan & produk</div>
                 </div>
               </div>
-              <div className="grid grid-cols-2 divide-x divide-indigo-100 border-t border-indigo-100 text-center py-3 bg-indigo-50/50">
+              <div className="grid grid-cols-3 divide-x divide-indigo-100 border-t border-indigo-100 text-center py-3 bg-indigo-50/50">
                 <div className="px-3">
-                  <div className="text-[10px] font-bold text-indigo-400 uppercase">Booking</div>
-                  <div className="text-lg font-black text-indigo-800">{sutaMetrics.todayBooking}</div>
+                  <div className="text-[10px] font-bold text-indigo-600 uppercase">Cash di Laci</div>
+                  <div className="text-sm font-black text-indigo-900 mt-0.5">{formatRupiah(sutaMetrics.cashInHand || 0)}</div>
                 </div>
                 <div className="px-3">
-                  <div className="text-[10px] font-bold text-indigo-400 uppercase">Bulan Ini</div>
-                  <div className="text-sm font-black text-indigo-700">{formatRupiah(sutaMetrics.monthRevenue)}</div>
+                  <div className="text-[10px] font-bold text-indigo-600 uppercase">Omzet Bulan Ini</div>
+                  <div className="text-sm font-black text-indigo-800 mt-0.5">{formatRupiah(sutaMetrics.monthRevenue)}</div>
+                </div>
+                <div className="px-3">
+                  <div className="text-[10px] font-bold text-indigo-600 uppercase">Booking Hari Ini</div>
+                  <div className="text-sm font-black text-indigo-900 mt-0.5">{sutaMetrics.todayBooking} reservasi</div>
                 </div>
               </div>
             </Card>
           </div>
 
-          {/* TOTAL GABUNGAN — strip ringkas */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <Card className="p-4 border-blue-200 bg-white shadow-sm text-center">
-              <div className="text-[10px] font-bold text-blue-500 uppercase tracking-wider">Total Customer</div>
-              <div className="text-2xl font-black text-blue-800 mt-1">{totalMetrics.todayCustomer}</div>
+          {/* TOTAL GABUNGAN EKSEKUTIF (6 KARTU MONITORING OWNER) */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            <Card className="p-3.5 border-blue-200 bg-white shadow-sm text-center hover:border-blue-400 transition">
+              <div className="text-[10px] font-bold text-blue-500 uppercase tracking-wider">Total Tamu</div>
+              <div className="text-2xl font-black text-blue-900 mt-1">{totalMetrics.todayCustomer}</div>
               <div className="text-[10px] text-slate-400">Telkom + Suta</div>
             </Card>
-            <Card className="p-4 border-emerald-200 bg-white shadow-sm text-center">
-              <div className="text-[10px] font-bold text-emerald-500 uppercase tracking-wider">Total Omzet</div>
+            <Card className="p-3.5 border-blue-200 bg-white shadow-sm text-center hover:border-blue-400 transition">
+              <div className="text-[10px] font-bold text-blue-500 uppercase tracking-wider">Total Struk</div>
+              <div className="text-2xl font-black text-blue-900 mt-1">{totalMetrics.todayTransaction}</div>
+              <div className="text-[10px] text-slate-400">Semua Struk</div>
+            </Card>
+            <Card className="p-3.5 border-emerald-200 bg-emerald-50/40 shadow-sm text-center hover:border-emerald-400 transition">
+              <div className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Omzet Periode</div>
               <div className="text-lg font-black text-emerald-700 mt-1">{formatRupiah(totalMetrics.todayRevenue)}</div>
-              <div className="text-[10px] text-slate-400">Gabungan cabang</div>
+              <div className="text-[10px] text-emerald-600/70 font-semibold">Gabungan Cabang</div>
             </Card>
-            <Card className="p-4 border-purple-200 bg-white shadow-sm text-center">
+            <Card className="p-3.5 border-amber-200 bg-amber-50/40 shadow-sm text-center hover:border-amber-400 transition">
+              <div className="text-[10px] font-bold text-amber-600 uppercase tracking-wider">Total Cash Fisik</div>
+              <div className="text-lg font-black text-amber-700 mt-1">{formatRupiah(totalMetrics.cashInHand || 0)}</div>
+              <div className="text-[10px] text-slate-400">Laci 2 Cabang</div>
+            </Card>
+            <Card className="p-3.5 border-purple-200 bg-white shadow-sm text-center hover:border-purple-400 transition">
               <div className="text-[10px] font-bold text-purple-500 uppercase tracking-wider">Total Booking</div>
-              <div className="text-2xl font-black text-purple-800 mt-1">{totalMetrics.todayBooking}</div>
-              <div className="text-[10px] text-slate-400">Semua cabang</div>
+              <div className="text-2xl font-black text-purple-900 mt-1">{totalMetrics.todayBooking}</div>
+              <div className="text-[10px] text-slate-400">Reservasi Hari Ini</div>
             </Card>
-            <Card className="p-4 border-amber-200 bg-white shadow-sm text-center">
-              <div className="text-[10px] font-bold text-amber-500 uppercase tracking-wider">Omzet Bulan Ini</div>
-              <div className="text-lg font-black text-amber-700 mt-1">{formatRupiah(totalMetrics.monthRevenue)}</div>
-              <div className="text-[10px] text-slate-400">Akumulasi</div>
+            <Card className="p-3.5 border-indigo-200 bg-white shadow-sm text-center hover:border-indigo-400 transition">
+              <div className="text-[10px] font-bold text-indigo-500 uppercase tracking-wider">Omzet Bulan Ini</div>
+              <div className="text-lg font-black text-indigo-700 mt-1">{formatRupiah(totalMetrics.monthRevenue)}</div>
+              <div className="text-[10px] text-slate-400">Akumulasi Bulan</div>
             </Card>
           </div>
         </div>

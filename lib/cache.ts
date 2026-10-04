@@ -42,18 +42,14 @@ export function invalidateAll(): void {
 
 /**
  * Wrapper: ambil dari cache jika ada, kalau tidak fetch lalu simpan ke cache.
+ * Cache aktif untuk SEMUA mode termasuk Supabase agar tidak membebani DB setiap request.
+ * TTL pendek memastikan data tetap cukup segar.
  */
 export async function withCache<T>(
   key: string,
   fetcher: () => Promise<T>,
   ttlSeconds: number = 30
 ): Promise<T> {
-  // With Supabase/PostgreSQL configured, correctness and cross-instance sync are
-  // more important than a process-local cache. Vercel instances do not share this Map.
-  const dbUrl = process.env.DATABASE_URL || "";
-  const hasPersistentDb = !!dbUrl && !dbUrl.includes("[YOUR-") && !dbUrl.includes("placeholder");
-  if (hasPersistentDb) return fetcher();
-
   const cached = getCached<T>(key);
   if (cached !== null) return cached;
 
@@ -64,15 +60,16 @@ export async function withCache<T>(
 
 // TTL constants (dalam detik)
 export const TTL = {
-  DASHBOARD: 20,       // Dashboard stats — 20 detik
-  PRODUCTS: 30,        // Produk & stok — 30 detik
-  SERVICES: 60,        // Layanan (jarang berubah) — 60 detik
-  BARBERMEN: 60,       // Barberman (jarang berubah) — 60 detik
-  CUSTOMERS: 30,       // Pelanggan — 30 detik
-  MEMBERS: 30,         // Member — 30 detik
-  BOOKINGS: 15,        // Booking (sering berubah) — 15 detik
-  TRANSACTIONS: 15,    // Transaksi (sering berubah) — 15 detik
-  CASH: 15,            // Kas — 15 detik
-  REPORTS: 60,         // Laporan — 60 detik
-  SETTINGS: 120,       // Pengaturan (sangat jarang berubah) — 120 detik
+  DASHBOARD: 15,       // Dashboard stats — 15 detik
+  PRODUCTS: 20,        // Produk & stok — 20 detik
+  SERVICES: 30,        // Layanan (jarang berubah) — 30 detik
+  BARBERMEN: 30,       // Barberman (jarang berubah) — 30 detik
+  CUSTOMERS: 15,       // Pelanggan — 15 detik
+  MEMBERS: 20,         // Member — 20 detik
+  BOOKINGS: 10,        // Booking (sering berubah) — 10 detik
+  TRANSACTIONS: 10,    // Transaksi (sering berubah) — 10 detik
+  CASH: 10,            // Kas — 10 detik
+  REPORTS: 30,         // Laporan — 30 detik
+  SETTINGS: 60,        // Pengaturan (sangat jarang berubah) — 60 detik
+  AUTH: 30,            // Auth session — 30 detik
 };

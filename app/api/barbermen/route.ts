@@ -8,14 +8,12 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
-    // Pastikan kolom branch ada di Supabase (jalan sekali per process)
-    await ensureSupabaseSchema();
-
     const { searchParams } = new URL(req.url);
     const includeInactive = searchParams.get("all") === "true";
     const branch = searchParams.get("branch") || undefined;
 
-    const data = await getBarbermen(includeInactive, branch);
+    const cacheKey = `barbermen:${includeInactive}:${branch || "all"}`;
+    const data = await withCache(cacheKey, () => getBarbermen(includeInactive, branch), TTL.BARBERMEN);
 
     return NextResponse.json(data, {
       headers: {

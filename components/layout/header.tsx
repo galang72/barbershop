@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Menu, ShoppingCart, Clock, ArrowLeftRight, Building2, Crown, Shield } from "lucide-react";
 import { formatDateIndo } from "@/lib/utils";
+import { useUser } from "@/lib/user-context";
 
 interface HeaderProps {
   onToggleMobile: () => void;
@@ -12,18 +13,7 @@ interface HeaderProps {
 
 export function Header({ onToggleMobile }: HeaderProps) {
   const todayStr = formatDateIndo(new Date());
-  const [user, setUser] = useState<any>(null);
-
-  useEffect(() => {
-    fetch("/api/auth/me")
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.authenticated && data.user) {
-          setUser(data.user);
-        }
-      })
-      .catch(() => {});
-  }, []);
+  const { user } = useUser();
 
   const getRoleBranchBadge = () => {
     if (!user) {
@@ -170,4 +160,3 @@ export function Header({ onToggleMobile }: HeaderProps) {
     </header>
   );
 }
-
