@@ -46,9 +46,7 @@ export async function GET(req: NextRequest) {
       ...report,
     }, {
       headers: {
-        "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
-        "Pragma": "no-cache",
-        "Expires": "0",
+        "Cache-Control": "public, s-maxage=10, stale-while-revalidate=30",
       },
     });
   } catch (err: any) {

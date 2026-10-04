@@ -13,17 +13,21 @@ import { exportToExcel, exportToCSV } from "@/lib/export";
 import { ReportHeader } from "@/components/reports/report-header";
 import { ReportFooter } from "@/components/reports/report-footer";
 
+// Client-side cache for instant display
+let _annualReportClientCache: Record<number, any> = {};
+
 export default function LaporanTahunanPage() {
   const currentYear = new Date().getFullYear();
   const [selectedYear, setSelectedYear] = useState(currentYear);
-  const [annualData, setAnnualData] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const [annualData, setAnnualData] = useState<any>(_annualReportClientCache[selectedYear] || null);
+  const [loading, setLoading] = useState(!_annualReportClientCache[selectedYear]);
 
   const fetchAnnual = async () => {
-    setLoading(true);
+    if (!_annualReportClientCache[selectedYear]) setLoading(true);
     try {
-      const res = await fetch(`/api/reports/annual?year=${selectedYear}&_t=${Date.now()}`, { cache: "no-store" });
+      const res = await fetch(`/api/reports/annual?year=${selectedYear}`);
       const json = await res.json();
+      _annualReportClientCache[selectedYear] = json;
       setAnnualData(json);
     } catch (e) {
       console.error(e);
@@ -33,6 +37,9 @@ export default function LaporanTahunanPage() {
   };
 
   useEffect(() => {
+    if (_annualReportClientCache[selectedYear]) {
+      setAnnualData(_annualReportClientCache[selectedYear]);
+    }
     fetchAnnual();
   }, [selectedYear]);
 

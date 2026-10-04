@@ -20,15 +20,19 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatDateTimeIndo } from "@/lib/utils";
 
+// Client-side cache for instant display
+let _aktivitasClientCache: Record<string, { activities: any[]; session: any }> = {};
+
 export default function AktivitasPage() {
-  const [activities, setActivities] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [session, setSession] = useState<any>(null);
   const [branchFilter, setBranchFilter] = useState("All");
+  const cached = _aktivitasClientCache[branchFilter];
+  const [activities, setActivities] = useState<any[]>(cached?.activities || []);
+  const [loading, setLoading] = useState(!cached);
+  const [session, setSession] = useState<any>(cached?.session || null);
   const [search, setSearch] = useState("");
 
   const loadActivities = async () => {
-    setLoading(true);
+    if (!_aktivitasClientCache[branchFilter]) setLoading(true);
     try {
       const [resAct, resSess] = await Promise.all([
         fetch(`/api/activities?branch=${branchFilter}`),
@@ -36,8 +40,11 @@ export default function AktivitasPage() {
       ]);
       const dataAct = await resAct.json();
       const dataSess = await resSess.json();
-      setActivities(dataAct.activities || []);
-      setSession(dataSess?.user);
+      const acts = dataAct.activities || [];
+      const sess = dataSess?.user;
+      _aktivitasClientCache[branchFilter] = { activities: acts, session: sess };
+      setActivities(acts);
+      setSession(sess);
     } catch (e) {
       console.error(e);
     } finally {
@@ -46,6 +53,10 @@ export default function AktivitasPage() {
   };
 
   useEffect(() => {
+    if (_aktivitasClientCache[branchFilter]) {
+      setActivities(_aktivitasClientCache[branchFilter].activities);
+      setSession(_aktivitasClientCache[branchFilter].session);
+    }
     loadActivities();
   }, [branchFilter]);
 

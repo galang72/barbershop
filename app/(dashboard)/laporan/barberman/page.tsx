@@ -19,25 +19,30 @@ import { exportToExcel, exportToCSV } from "@/lib/export";
 import { ReportHeader } from "@/components/reports/report-header";
 import { ReportFooter } from "@/components/reports/report-footer";
 
+// Client-side cache for instant display
+let _barbermanReportClientCache: Record<string, { stats: any[]; summary: any }> = {};
+
 export default function LaporanBarbermanPage() {
   const [period, setPeriod] = useState<"daily" | "monthly" | "annual">("monthly");
   const [branch, setBranch] = useState<string>("All");
+  const cacheKey = `${period}-${branch}`;
+  const cached = _barbermanReportClientCache[cacheKey];
+
   const [selectedBarberId, setSelectedBarberId] = useState<string>("");
-  const [statsData, setStatsData] = useState<any[]>([]);
-  const [summary, setSummary] = useState<any>({ totalTransactions: 0, totalOmzet: 0, totalCustomers: 0 });
-  const [loading, setLoading] = useState(true);
+  const [statsData, setStatsData] = useState<any[]>(cached?.stats || []);
+  const [summary, setSummary] = useState<any>(cached?.summary || { totalTransactions: 0, totalOmzet: 0, totalCustomers: 0 });
+  const [loading, setLoading] = useState(!cached);
 
   const loadData = async () => {
-    setLoading(true);
+    if (!_barbermanReportClientCache[cacheKey]) setLoading(true);
     try {
-      const t = Date.now();
-      const res = await fetch(`/api/barbermen/stats?period=${period}&branch=${branch}&_t=${t}`, {
-        cache: "no-store",
-      });
+      const res = await fetch(`/api/barbermen/stats?period=${period}&branch=${branch}`);
       const json = await res.json();
       const list = Array.isArray(json.stats) ? json.stats : [];
+      const sum = json.summary || { totalTransactions: 0, totalOmzet: 0, totalCustomers: 0 };
+      _barbermanReportClientCache[cacheKey] = { stats: list, summary: sum };
       setStatsData(list);
-      setSummary(json.summary || { totalTransactions: 0, totalOmzet: 0, totalCustomers: 0 });
+      setSummary(sum);
       if (list.length > 0 && !selectedBarberId) {
         setSelectedBarberId(list[0].id);
       }
@@ -49,6 +54,10 @@ export default function LaporanBarbermanPage() {
   };
 
   useEffect(() => {
+    if (_barbermanReportClientCache[cacheKey]) {
+      setStatsData(_barbermanReportClientCache[cacheKey].stats);
+      setSummary(_barbermanReportClientCache[cacheKey].summary);
+    }
     loadData();
   }, [period, branch]);
 

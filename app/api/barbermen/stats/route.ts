@@ -133,6 +133,10 @@ export async function GET(req: NextRequest) {
         totalOmzet: transactions.reduce((s: number, t: any) => s + (t.grandTotal || 0), 0),
         totalCustomers: new Set(transactions.map((t: any) => t.customerId || t.customerName)).size,
       },
+    }, {
+      headers: {
+        "Cache-Control": "public, s-maxage=10, stale-while-revalidate=30",
+      },
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });

@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { formatRupiah, formatDateIndo } from "@/lib/utils";
+import { formatRupiah, formatDateIndo, getTodayDateWIB } from "@/lib/utils";
 import { exportToExcel, exportToCSV } from "@/lib/export";
 import { ReportHeader } from "@/components/reports/report-header";
 import { ReportFooter } from "@/components/reports/report-footer";
@@ -20,14 +20,14 @@ import { ReportFooter } from "@/components/reports/report-footer";
 let _dailyReportClientCache: Record<string, any> = {};
 
 export default function LaporanHarianPage() {
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
+  const [selectedDate, setSelectedDate] = useState(getTodayDateWIB());
   const [report, setReport] = useState<any>(_dailyReportClientCache[selectedDate] || null);
   const [loading, setLoading] = useState(!_dailyReportClientCache[selectedDate]);
 
   const fetchReport = async () => {
     if (!_dailyReportClientCache[selectedDate]) setLoading(true);
     try {
-      const res = await fetch(`/api/reports/daily?date=${selectedDate}&_t=${Date.now()}`);
+      const res = await fetch(`/api/reports/daily?date=${selectedDate}`);
       const json = await res.json();
       _dailyReportClientCache[selectedDate] = json;
       setReport(json);

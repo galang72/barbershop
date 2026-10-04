@@ -13,16 +13,20 @@ import { ReportFooter } from "@/components/reports/report-footer";
 import { formatRupiah } from "@/lib/utils";
 import { exportToExcel, exportToCSV } from "@/lib/export";
 
+// Client-side cache for instant display
+let _tonicPowderReportClientCache: Record<string, any> = {};
+
 export default function LaporanTonicPowderPage() {
   const [filter, setFilter] = useState("month");
-  const [data, setData] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<any>(_tonicPowderReportClientCache[filter] || null);
+  const [loading, setLoading] = useState(!_tonicPowderReportClientCache[filter]);
 
   const fetchReport = async () => {
-    setLoading(true);
+    if (!_tonicPowderReportClientCache[filter]) setLoading(true);
     try {
-      const res = await fetch(`/api/reports/category?category=tonic-powder&filter=${filter}&_t=${Date.now()}`, { cache: "no-store" });
+      const res = await fetch(`/api/reports/category?category=tonic-powder&filter=${filter}`);
       const json = await res.json();
+      _tonicPowderReportClientCache[filter] = json;
       setData(json);
     } catch (e) {
       console.error(e);
@@ -32,6 +36,9 @@ export default function LaporanTonicPowderPage() {
   };
 
   useEffect(() => {
+    if (_tonicPowderReportClientCache[filter]) {
+      setData(_tonicPowderReportClientCache[filter]);
+    }
     fetchReport();
   }, [filter]);
 

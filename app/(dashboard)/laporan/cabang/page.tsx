@@ -7,21 +7,28 @@ import { Button } from "@/components/ui/button";
 
 type BranchFilter = "All" | "Telkom" | "Suta";
 
+// Client-side cache for instant display
+let _cabangReportClientCache: Record<string, { reports: any[]; unreadCount: number }> = {};
+
 export default function LaporanCabangPage() {
-  const [reports, setReports] = useState<any[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<BranchFilter>("All");
+  const cached = _cabangReportClientCache[filter];
+  const [reports, setReports] = useState<any[]>(cached?.reports || []);
+  const [unreadCount, setUnreadCount] = useState(cached?.unreadCount || 0);
+  const [loading, setLoading] = useState(!cached);
   const [markingId, setMarkingId] = useState<string | null>(null);
 
   const fetchReports = async () => {
-    setLoading(true);
+    if (!_cabangReportClientCache[filter]) setLoading(true);
     try {
       const url = filter !== "All" ? `/api/branch-reports?branch=${filter}` : "/api/branch-reports";
       const res = await fetch(url);
       const data = await res.json();
-      setReports(data.reports || []);
-      setUnreadCount(data.unreadCount || 0);
+      const r = data.reports || [];
+      const u = data.unreadCount || 0;
+      _cabangReportClientCache[filter] = { reports: r, unreadCount: u };
+      setReports(r);
+      setUnreadCount(u);
     } catch (e) {
       console.error(e);
     } finally {
@@ -29,7 +36,13 @@ export default function LaporanCabangPage() {
     }
   };
 
-  useEffect(() => { fetchReports(); }, [filter]);
+  useEffect(() => {
+    if (_cabangReportClientCache[filter]) {
+      setReports(_cabangReportClientCache[filter].reports);
+      setUnreadCount(_cabangReportClientCache[filter].unreadCount);
+    }
+    fetchReports();
+  }, [filter]);
 
   const handleMarkRead = async (id: string, isRead: boolean) => {
     setMarkingId(id);

@@ -13,16 +13,20 @@ import { ReportFooter } from "@/components/reports/report-footer";
 import { formatRupiah } from "@/lib/utils";
 import { exportToExcel, exportToCSV } from "@/lib/export";
 
+// Client-side cache for instant display
+let _pomadeReportClientCache: Record<string, any> = {};
+
 export default function LaporanPomadePage() {
   const [filter, setFilter] = useState("month");
-  const [data, setData] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<any>(_pomadeReportClientCache[filter] || null);
+  const [loading, setLoading] = useState(!_pomadeReportClientCache[filter]);
 
   const fetchReport = async () => {
-    setLoading(true);
+    if (!_pomadeReportClientCache[filter]) setLoading(true);
     try {
-      const res = await fetch(`/api/reports/category?category=pomade&filter=${filter}&_t=${Date.now()}`, { cache: "no-store" });
+      const res = await fetch(`/api/reports/category?category=pomade&filter=${filter}`);
       const json = await res.json();
+      _pomadeReportClientCache[filter] = json;
       setData(json);
     } catch (e) {
       console.error(e);
@@ -32,6 +36,9 @@ export default function LaporanPomadePage() {
   };
 
   useEffect(() => {
+    if (_pomadeReportClientCache[filter]) {
+      setData(_pomadeReportClientCache[filter]);
+    }
     fetchReport();
   }, [filter]);
 

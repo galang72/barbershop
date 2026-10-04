@@ -11,7 +11,11 @@ export async function GET(req: NextRequest) {
     const branch = resolveBranchFilter(session, searchParams.get("branch"));
 
     const activities = await getActivities(branch);
-    return NextResponse.json({ activities });
+    return NextResponse.json({ activities }, {
+      headers: {
+        "Cache-Control": "public, s-maxage=5, stale-while-revalidate=15",
+      },
+    });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
