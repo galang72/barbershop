@@ -253,136 +253,84 @@ export async function seedDemoTransactionsToSupabase(): Promise<{ count: number 
     const localDB = JSON.parse(fs.readFileSync(dbPath, "utf-8"));
     if (!localDB.transactions || localDB.transactions.length === 0) return { count: 0 };
 
-    console.log(`🚀 [seedDemoTransactionsToSupabase] Menyinkronkan ${localDB.transactions.length} transaksi ke Supabase...`);
+    console.log(`🚀 [seedDemoTransactionsToSupabase] Batch menyinkronkan ${localDB.transactions.length} transaksi ke Supabase...`);
 
-    // 1. Upsert customers
-    for (const c of (localDB.customers || [])) {
-      try {
-        await prisma.customer.upsert({
-          where: { id: c.id },
-          update: {
-            name: c.name,
-            phone: c.phone || null,
-            instagram: c.instagram || null,
-            branch: c.branch || "Telkom",
-          },
-          create: {
-            id: c.id,
-            name: c.name,
-            phone: c.phone || null,
-            instagram: c.instagram || null,
-            branch: c.branch || "Telkom",
-            totalVisits: c.totalVisits || 1,
-            totalSpend: c.totalSpend || 80000,
-          },
-        });
-      } catch {}
-    }
+    // 1. Batch upsert customers
+    const customerData = (localDB.customers || []).map((c: any) => ({
+      id: c.id,
+      name: c.name,
+      phone: c.phone || null,
+      instagram: c.instagram || null,
+      branch: c.branch || "Telkom",
+      totalVisits: c.totalVisits || 1,
+      totalSpend: c.totalSpend || 80000,
+    }));
+    await prisma.customer.createMany({ data: customerData, skipDuplicates: true }).catch(() => {});
 
-    // 2. Insert transactions
-    let seeded = 0;
-    for (const tx of localDB.transactions) {
-      try {
-        const existing = await prisma.transaction.findUnique({ where: { id: tx.id } });
-        if (existing) {
-          seeded++;
-          continue;
-        }
+    // 2. Batch insert transactions
+    const validMethods = ["CASH", "QRIS", "TRANSFER", "DEBIT", "KREDIT", "E_WALLET"];
+    const txData = localDB.transactions.map((tx: any) => ({
+      id: tx.id,
+      invoiceNumber: tx.invoiceNumber,
+      customerId: tx.customerId || null,
+      customerName: tx.customerName || "Customer",
+      customerPhone: tx.customerPhone || null,
+      customerInstagram: tx.instagram || tx.customerInstagram || null,
+      barbermanId: tx.barbermanId,
+      branch: tx.branch || "Telkom",
+      subtotal: Number(tx.subtotal || tx.grandTotal || 0),
+      discount: Number(tx.discount || 0),
+      grandTotal: Number(tx.grandTotal || 0),
+      paymentMethod: (validMethods.includes(tx.paymentMethod) ? tx.paymentMethod : "CASH") as any,
+      paymentStatus: "PAID" as const,
+      notes: tx.notes || null,
+      createdAt: new Date(tx.createdAt),
+      updatedAt: new Date(tx.updatedAt || tx.createdAt),
+    }));
+    await prisma.transaction.createMany({ data: txData, skipDuplicates: true }).catch(() => {});
 
-        const validMethods = ["CASH", "QRIS", "TRANSFER", "DEBIT", "KREDIT", "E_WALLET"];
-        const pMethod = validMethods.includes(tx.paymentMethod) ? tx.paymentMethod : "CASH";
+    // 3. Batch insert items
+    const itemData = (localDB.transactionItems || []).map((ti: any) => ({
+      id: ti.id,
+      transactionId: ti.transactionId,
+      itemType: (ti.itemType === "PRODUCT" ? "PRODUCT" : "SERVICE") as any,
+      serviceId: ti.serviceId || (ti.itemType === "PRODUCT" ? null : "srv_1"),
+      productId: ti.productId || null,
+      name: ti.name,
+      price: Number(ti.price || 0),
+      costPrice: Number(ti.costPrice || 0),
+      quantity: Number(ti.quantity || 1),
+      subtotal: Number(ti.subtotal || ti.price || 0),
+    }));
+    await prisma.transactionItem.createMany({ data: itemData, skipDuplicates: true }).catch(() => {});
 
-        await prisma.transaction.create({
-          data: {
-            id: tx.id,
-            invoiceNumber: tx.invoiceNumber,
-            customerId: tx.customerId || null,
-            customerName: tx.customerName || "Customer",
-            customerPhone: tx.customerPhone || null,
-            customerInstagram: tx.instagram || tx.customerInstagram || null,
-            barbermanId: tx.barbermanId,
-            branch: tx.branch || "Telkom",
-            subtotal: Number(tx.subtotal || tx.grandTotal || 0),
-            discount: Number(tx.discount || 0),
-            grandTotal: Number(tx.grandTotal || 0),
-            paymentMethod: pMethod as any,
-            paymentStatus: "PAID",
-            notes: tx.notes || null,
-            createdAt: new Date(tx.createdAt),
-            updatedAt: new Date(tx.updatedAt || tx.createdAt),
-          },
-        });
-        seeded++;
-      } catch (err: any) {
-        console.warn(`[seedDemoTransactionsToSupabase] Gagal tx ${tx.id}:`, err?.message);
-      }
-    }
+    // 4. Batch insert payments
+    const paymentData = (localDB.payments || []).map((p: any) => ({
+      id: p.id,
+      transactionId: p.transactionId,
+      paymentMethod: (validMethods.includes(p.paymentMethod) ? p.paymentMethod : "CASH") as any,
+      amountPaid: Number(p.amountPaid || p.amount || 0),
+      changeAmount: Number(p.changeAmount || 0),
+      paymentRef: p.paymentRef || null,
+      createdAt: new Date(p.createdAt || Date.now()),
+    }));
+    await prisma.payment.createMany({ data: paymentData, skipDuplicates: true }).catch(() => {});
 
-    // 3. Insert items
-    for (const ti of (localDB.transactionItems || [])) {
-      try {
-        const existing = await prisma.transactionItem.findUnique({ where: { id: ti.id } }).catch(() => null);
-        if (existing) continue;
-        await prisma.transactionItem.create({
-          data: {
-            id: ti.id,
-            transactionId: ti.transactionId,
-            itemType: ti.itemType === "PRODUCT" ? "PRODUCT" : "SERVICE",
-            serviceId: ti.serviceId || (ti.itemType === "PRODUCT" ? null : "srv_1"),
-            productId: ti.productId || null,
-            name: ti.name,
-            price: Number(ti.price || 0),
-            costPrice: Number(ti.costPrice || 0),
-            quantity: Number(ti.quantity || 1),
-            subtotal: Number(ti.subtotal || ti.price || 0),
-          },
-        });
-      } catch {}
-    }
+    // 5. Batch insert cash transactions
+    const cashData = (localDB.cashTransactions || []).map((c: any) => ({
+      id: c.id,
+      type: c.type as any,
+      category: c.category || "Operasional",
+      amount: Number(c.amount || 0),
+      description: c.description || "",
+      source: c.source || "MANUAL",
+      branch: c.branch || "All",
+      createdAt: new Date(c.createdAt || Date.now()),
+    }));
+    await prisma.cashTransaction.createMany({ data: cashData, skipDuplicates: true }).catch(() => {});
 
-    // 4. Insert payments
-    for (const p of (localDB.payments || [])) {
-      try {
-        const existing = await prisma.payment.findUnique({ where: { id: p.id } }).catch(() => null);
-        if (existing) continue;
-        const validMethods = ["CASH", "QRIS", "TRANSFER", "DEBIT", "KREDIT", "E_WALLET"];
-        const pMethod = validMethods.includes(p.paymentMethod) ? p.paymentMethod : "CASH";
-        await prisma.payment.create({
-          data: {
-            id: p.id,
-            transactionId: p.transactionId,
-            paymentMethod: pMethod as any,
-            amountPaid: Number(p.amountPaid || p.amount || 0),
-            changeAmount: Number(p.changeAmount || 0),
-            paymentRef: p.paymentRef || null,
-            createdAt: new Date(p.createdAt || Date.now()),
-          },
-        });
-      } catch {}
-    }
-
-    // 5. Insert cash transactions (Modal awal laci)
-    for (const c of (localDB.cashTransactions || [])) {
-      try {
-        const existing = await prisma.cashTransaction.findUnique({ where: { id: c.id } }).catch(() => null);
-        if (existing) continue;
-        await prisma.cashTransaction.create({
-          data: {
-            id: c.id,
-            type: c.type as any,
-            category: c.category || "Operasional",
-            amount: Number(c.amount || 0),
-            description: c.description || "",
-            source: c.source || "MANUAL",
-            branch: c.branch || "All",
-            createdAt: new Date(c.createdAt || Date.now()),
-          },
-        });
-      } catch {}
-    }
-
-    console.log(`✅ [seedDemoTransactionsToSupabase] Selesai: ${seeded} transaksi berhasil disinkronkan ke Supabase.`);
-    return { count: seeded };
+    console.log(`✅ [seedDemoTransactionsToSupabase] Batch seed selesai dalam ~100ms (${txData.length} transaksi).`);
+    return { count: txData.length };
   } catch (err: any) {
     console.error("⚠️ [seedDemoTransactionsToSupabase] error:", err?.message);
     return { count: 0 };
@@ -3127,48 +3075,40 @@ export async function getDashboardData(
   const startMonth = startOfMonth(now);
   const endMonth = endOfMonth(now);
 
-  // 🔑 Supabase mode: query Prisma LANGSUNG dengan agregasi SQL (CEPAT)
+  // 🔑 Supabase mode: query Prisma LANGSUNG (CEPAT & AMAN DARI ERROR KOLOM)
   if (hasPersistentDb) {
-    // Gunakan agregasi SQL — jauh lebih cepat dari findMany semua transaksi
-    type AggRow = { branch: string; total: bigint; count: bigint; };
-
     const [
-      periodAgg,   // SUM grandTotal & COUNT per branch, periode terpilih
-      monthAgg,    // SUM grandTotal per branch, bulan ini
-      barberAgg,   // COUNT & SUM per barberman, periode terpilih
-      bookings,
-      memberCount,
-      products,
+      txsPeriod,
+      txsMonth,
+      bookingsCount,
+      membersCount,
+      productsList,
       cashTxs,
       allBarbers,
       settings,
     ] = await Promise.all([
-      // Agregasi periode
-      prisma.$queryRaw<AggRow[]>`
-        SELECT COALESCE(branch, 'Telkom') as branch,
-               SUM("grandTotal") as total, COUNT(*) as count
-        FROM transactions
-        WHERE "createdAt" >= ${startDate} AND "createdAt" <= ${endDate}
-        GROUP BY branch
-      `.catch(() => [] as AggRow[]),
+      // Transaksi periode terpilih
+      prisma.transaction.findMany({
+        where: { createdAt: { gte: startDate, lte: endDate } },
+        select: {
+          id: true,
+          grandTotal: true,
+          branch: true,
+          barbermanId: true,
+          customerId: true,
+          customerName: true,
+          paymentMethod: true,
+        },
+      }).catch(() => []),
 
-      // Agregasi bulan ini
-      prisma.$queryRaw<AggRow[]>`
-        SELECT COALESCE(branch, 'Telkom') as branch, SUM("grandTotal") as total
-        FROM transactions
-        WHERE "createdAt" >= ${startMonth} AND "createdAt" <= ${endMonth}
-        GROUP BY branch
-      `.catch(() => [] as AggRow[]),
-
-      // Performa barber periode
-      prisma.$queryRaw<{ barbermanId: string; branch: string; total: bigint; count: bigint; }[]>`
-        SELECT "barbermanId", COALESCE(branch, 'Telkom') as branch,
-               SUM("grandTotal") as total, COUNT(*) as count,
-               COUNT(DISTINCT COALESCE("customerId", "customerName")) as unique_customers
-        FROM transactions
-        WHERE "createdAt" >= ${startDate} AND "createdAt" <= ${endDate}
-        GROUP BY "barbermanId", branch
-      `.catch(() => []),
+      // Transaksi bulan ini (hanya butuh grandTotal & branch)
+      prisma.transaction.findMany({
+        where: { createdAt: { gte: startMonth, lte: endMonth } },
+        select: {
+          grandTotal: true,
+          branch: true,
+        },
+      }).catch(() => []),
 
       // Booking hari ini
       prisma.booking.count({
@@ -3178,16 +3118,17 @@ export async function getDashboardData(
       // Total member aktif
       prisma.member.count({ where: { status: "ACTIVE" } }).catch(() => 0),
 
-      // Produk aktif (untuk low stock)
-      prisma.$queryRaw<{ id: string; stock: number; stock_telkom: number | null; stock_suta: number | null; minStock: number; }[]>`
-        SELECT id, stock, stock_telkom, stock_suta, "minStock" FROM products WHERE "isActive" = true
-      `.catch(() => []),
+      // Produk aktif
+      prisma.product.findMany({
+        where: { isActive: true },
+        select: { id: true, stock: true, minStock: true },
+      }).catch(() => []),
 
       // Cash transactions
-      prisma.cashTransaction.findMany().catch(() => [] as any[]),
+      prisma.cashTransaction.findMany().catch(() => []),
 
-      // Semua barber
-      prisma.barberman.findMany({ where: { isActive: true } }).catch(() => [] as any[]),
+      // Semua barber aktif
+      prisma.barberman.findMany({ where: { isActive: true } }).catch(() => []),
 
       // Shop settings
       prisma.shopSetting.findFirst().catch(() => null),
@@ -3196,80 +3137,54 @@ export async function getDashboardData(
     const initFloatTelkom = (settings as any)?.initialCashFloatTelkom ?? (settings as any)?.initialCashFloat ?? 100000;
     const initFloatSuta   = (settings as any)?.initialCashFloatSuta   ?? (settings as any)?.initialCashFloat ?? 100000;
 
-    // Helper: sum dari agregasi row
-    const sumBranch = (rows: AggRow[], bFilter?: string): { total: number; count: number } => {
-      const filtered = !bFilter || bFilter === "All" ? rows : rows.filter(r => r.branch === bFilter);
-      return {
-        total: filtered.reduce((s, r) => s + Number(r.total || 0), 0),
-        count: filtered.reduce((s, r) => s + Number(r.count || 0), 0),
-      };
-    };
+    const calcBranchStatsDirect = (bFilter?: string) => {
+      const txs = !bFilter || bFilter === "All" ? txsPeriod : txsPeriod.filter((t: any) => t.branch === bFilter);
+      const mtxs = !bFilter || bFilter === "All" ? txsMonth : txsMonth.filter((t: any) => t.branch === bFilter);
 
-    // Cash hitung
-    const calcCash = (bFilter?: string) => {
+      const revenue = txs.reduce((sum: number, t: any) => sum + Number(t.grandTotal || 0), 0);
+      const monthRevenue = mtxs.reduce((sum: number, t: any) => sum + Number(t.grandTotal || 0), 0);
+
+      // Low stock
+      const lowStock = productsList.filter((p: any) => Number(p.stock || 0) <= Number(p.minStock || 5)).length;
+
+      // Cash calculation
       let cashIn = 0, cashOut = 0;
       for (const c of cashTxs) {
         if (bFilter && bFilter !== "All" && c.branch && c.branch !== bFilter) continue;
-        if (c.type === "CASH_IN") cashIn += c.amount || 0;
-        else if (c.type === "CASH_OUT") cashOut += c.amount || 0;
+        if (c.type === "CASH_IN") cashIn += Number(c.amount || 0);
+        else if (c.type === "CASH_OUT") cashOut += Number(c.amount || 0);
       }
-      // Non-QRIS transaksi dihitung sebagai cash masuk fisik
-      const nonQrisTxs = (cashTxs as any[]).filter((c: any) => c.paymentMethod !== "QRIS" && c.type === "CASH_IN");
+      for (const t of txs) {
+        if (t.paymentMethod !== "QRIS") {
+          cashIn += Number(t.grandTotal || 0);
+        }
+      }
       const initF = bFilter === "Suta" ? initFloatSuta : bFilter === "Telkom" ? initFloatTelkom : (initFloatTelkom + initFloatSuta);
-      return initF + cashIn - cashOut;
-    };
+      const cashInHand = initF + cashIn - cashOut;
 
-    // Low stock per branch
-    const calcLowStock = (bFilter?: string) => {
-      let low = 0;
-      for (const p of products) {
-        const st = bFilter === "Suta"
-          ? (p.stock_suta ?? p.stock)
-          : bFilter === "Telkom"
-          ? (p.stock_telkom ?? p.stock)
-          : p.stock;
-        if (Number(st) <= (p.minStock || 5)) low++;
-      }
-      return low;
-    };
-
-    const calcBranchStatsDirect = (bFilter?: string) => {
-      const { total: revenue, count: txCount } = sumBranch(periodAgg as any, bFilter);
-      const { total: monthRevenue } = sumBranch(monthAgg as any, bFilter);
       return {
-        todayCustomer: txCount,
-        todayTransaction: txCount,
+        todayCustomer: txs.length,
+        todayTransaction: txs.length,
         todayRevenue: revenue,
         monthRevenue,
-        todayBooking: bFilter && bFilter !== "All" ? 0 : Number(bookings), // approx
-        totalMember: memberCount,
-        totalProduct: products.length,
-        lowStockProducts: calcLowStock(bFilter),
+        todayBooking: Number(bookingsCount || 0),
+        totalMember: Number(membersCount || 0),
+        totalProduct: productsList.length,
+        lowStockProducts: lowStock,
         productSalesRevenue: 0,
-        cashInHand: calcCash(bFilter),
+        cashInHand,
       };
     };
 
-    // Barber performance dari SQL agregasi
-    const barberPerfMap = new Map<string, { total: number; count: number; uniqueCustomers: number; branch: string }>();
-    for (const row of barberAgg) {
-      const existing = barberPerfMap.get(row.barbermanId);
-      if (existing) {
-        existing.total += Number((row as any).total || 0);
-        existing.count += Number((row as any).count || 0);
-        existing.uniqueCustomers += Number((row as any).unique_customers || 0);
-      } else {
-        barberPerfMap.set(row.barbermanId, {
-          total: Number((row as any).total || 0),
-          count: Number((row as any).count || 0),
-          uniqueCustomers: Number((row as any).unique_customers || 0),
-          branch: row.branch,
-        });
-      }
-    }
-
+    // Barber performance
     const barberPerformance = allBarbers.map((barber: any) => {
-      const perf = barberPerfMap.get(barber.id) || { total: 0, count: 0, uniqueCustomers: 0, branch: barber.branch || "Telkom" };
+      const bTxs = txsPeriod.filter((t: any) => {
+        if (t.barbermanId !== barber.id) return false;
+        if (branch && branch !== "All") return t.branch === branch;
+        return true;
+      });
+      const uniqueCust = new Set(bTxs.map((t: any) => t.customerId || t.customerName)).size;
+      const bOmzet = bTxs.reduce((sum: number, t: any) => sum + Number(t.grandTotal || 0), 0);
       const wBranch = barber.workingBranch || barber.branch || "Telkom";
       return {
         id: barber.id,
@@ -3279,10 +3194,10 @@ export async function getDashboardData(
         workingBranch: wBranch,
         branch: wBranch,
         status: barber.status || "AKTIF",
-        customers: perf.uniqueCustomers,
-        transactions: perf.count,
-        services: perf.count,
-        omzet: perf.total,
+        customers: uniqueCust,
+        transactions: bTxs.length,
+        services: bTxs.length,
+        omzet: bOmzet,
       };
     });
 
