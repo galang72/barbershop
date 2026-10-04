@@ -1901,27 +1901,47 @@ export async function createProductTransfer(input: CreateTransferInput) {
 
 // CUSTOMERS (Mendukung 4 macam kasus: Nama saja, Nama+HP, Nama+IG, Nama+HP+IG)
 export async function getCustomers(query?: string) {
+  const dbUrl = process.env.DATABASE_URL || "";
+  const hasPersistentDb = !!dbUrl && !dbUrl.includes("[YOUR-") && !dbUrl.includes("placeholder");
+
+  if (hasPersistentDb) {
+    const where: any = {};
+    if (query && query.trim()) {
+      const q = query.trim();
+      where.OR = [
+        { name: { contains: q, mode: "insensitive" } },
+        { phone: { contains: q, mode: "insensitive" } },
+        { instagram: { contains: q, mode: "insensitive" } },
+      ];
+    }
+    return await prisma.customer.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      take: query ? 20 : 200,
+    }).catch(() => []);
+  }
+
+  // Memory fallback
   await initMemoryDBIfNeeded();
   syncFromLocalDB();
-
   let list = memoryDB.customers || [];
   if (!query || query.trim() === "") {
-    return list.map((c) => ({
+    return list.map((c: any) => ({
       ...c,
-      favoriteBarberman: memoryDB.barbermen.find((b) => b.id === c.favoriteBarbermanId) || null,
+      favoriteBarberman: memoryDB.barbermen.find((b: any) => b.id === c.favoriteBarbermanId) || null,
     }));
   }
   const q = query.toLowerCase().trim();
   return list
-    .filter((c) => {
+    .filter((c: any) => {
       const matchName = c.name?.toLowerCase().includes(q);
       const matchPhone = c.phone?.toLowerCase().includes(q);
       const matchIg = c.instagram?.toLowerCase().includes(q);
       return matchName || matchPhone || matchIg;
     })
-    .map((c) => ({
+    .map((c: any) => ({
       ...c,
-      favoriteBarberman: memoryDB.barbermen.find((b) => b.id === c.favoriteBarbermanId) || null,
+      favoriteBarberman: memoryDB.barbermen.find((b: any) => b.id === c.favoriteBarbermanId) || null,
     }));
 }
 
@@ -1941,7 +1961,6 @@ export async function createCustomer(data: { name: string; phone?: string | null
   if (dbUrl && !dbUrl.includes("[YOUR-") && !dbUrl.includes("placeholder")) {
     if (!(await isDatabaseConnected())) throw new Error("Database Supabase tidak terhubung.");
     const created = await prisma.customer.create({ data: { id: `cst_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, ...clean } });
-    await hydrateFromSupabase();
     return created;
   }
   const customerData = { id: `cst_${Date.now()}`, ...clean, lastVisitAt: null, favoriteBarbermanId: null, createdAt: new Date() };
@@ -1964,7 +1983,6 @@ export async function updateCustomer(id: string, data: { name?: string; phone?: 
   if (dbUrl && !dbUrl.includes("[YOUR-") && !dbUrl.includes("placeholder")) {
     if (!(await isDatabaseConnected())) throw new Error("Database Supabase tidak terhubung.");
     const updated = await prisma.customer.update({ where: { id }, data: prismaData });
-    await hydrateFromSupabase();
     return updated;
   }
   const idx = memoryDB.customers.findIndex((c: any) => c.id === id);
@@ -1981,7 +1999,6 @@ export async function deleteCustomer(id: string) {
   if (dbUrl && !dbUrl.includes("[YOUR-") && !dbUrl.includes("placeholder")) {
     if (!(await isDatabaseConnected())) throw new Error("Database Supabase tidak terhubung.");
     await prisma.customer.delete({ where: { id } });
-    await hydrateFromSupabase();
     return { success: true };
   }
   memoryDB.customers = memoryDB.customers.filter((c: any) => c.id !== id);
@@ -1991,23 +2008,40 @@ export async function deleteCustomer(id: string) {
 
 
 export async function getCustomerDetail(id: string) {
+  const dbUrl = process.env.DATABASE_URL || "";
+  const hasPersistentDb = !!dbUrl && !dbUrl.includes("[YOUR-") && !dbUrl.includes("placeholder");
+
+  if (hasPersistentDb) {
+    return await prisma.customer.findUnique({
+      where: { id },
+      include: {
+        transactions: {
+          include: { items: true, payments: true, barberman: true },
+          orderBy: { createdAt: "desc" },
+          take: 50,
+        },
+        members: true,
+      },
+    }).catch(() => null);
+  }
+
+  // Memory fallback
   await initMemoryDBIfNeeded();
   syncFromLocalDB();
-
-  const customer = (memoryDB.customers || []).find((c) => c.id === id);
+  const customer = (memoryDB.customers || []).find((c: any) => c.id === id);
   if (!customer) return null;
   const txs = (memoryDB.transactions || [])
-    .filter((t) => t.customerId === id || (t.customerName && t.customerName.toLowerCase() === customer.name.toLowerCase()))
-    .map((t) => ({
+    .filter((t: any) => t.customerId === id || (t.customerName && t.customerName.toLowerCase() === customer.name.toLowerCase()))
+    .map((t: any) => ({
       ...t,
-      barberman: (memoryDB.barbermen || []).find((b) => b.id === t.barbermanId) || null,
-      items: (memoryDB.transactionItems || []).filter((i) => i.transactionId === t.id),
-      payments: (memoryDB.payments || []).filter((p) => p.transactionId === t.id),
+      barberman: (memoryDB.barbermen || []).find((b: any) => b.id === t.barbermanId) || null,
+      items: (memoryDB.transactionItems || []).filter((i: any) => i.transactionId === t.id),
+      payments: (memoryDB.payments || []).filter((p: any) => p.transactionId === t.id),
     }));
-  const mbrs = (memoryDB.members || []).filter((m) => m.customerId === id);
+  const mbrs = (memoryDB.members || []).filter((m: any) => m.customerId === id);
   return {
     ...customer,
-    favoriteBarberman: (memoryDB.barbermen || []).find((b) => b.id === customer.favoriteBarbermanId) || null,
+    favoriteBarberman: (memoryDB.barbermen || []).find((b: any) => b.id === customer.favoriteBarbermanId) || null,
     members: mbrs,
     transactions: txs,
   };
@@ -2449,24 +2483,24 @@ export async function processCheckout(payload: CheckoutPayload & { branch?: stri
       include: { items: true, payments: true, barberman: true, customer: true },
     });
 
-    if (payload.paymentMethod === "CASH") {
-      await tx.cashTransaction.create({
-        data: {
-          id: cashId,
-          type: "CASH_IN",
-          category: "Penjualan Kasir",
-          amount: payload.grandTotal,
-          description: `Pembayaran Cash Kasir ${invoiceNumber} (${payload.customerName})`,
-          source: "POS_SALE",
-          transactionId: txId,
-          branch: txBranch,
-        },
-      });
-    }
+    // Record ALL payment methods in cash ledger (CASH, QRIS, TRANSFER, DEBIT)
+    const payMethod = (payload.paymentMethod || "CASH").toUpperCase();
+    await tx.cashTransaction.create({
+      data: {
+        id: cashId,
+        type: "CASH_IN",
+        category: payMethod === "CASH" ? "Penjualan Kasir" : `Penjualan ${payMethod}`,
+        amount: payload.grandTotal,
+        description: `Pembayaran ${payMethod} Kasir ${invoiceNumber} (${payload.customerName})`,
+        source: "POS_SALE",
+        transactionId: txId,
+        branch: txBranch,
+      },
+    });
     return transaction;
   });
 
-  await hydrateFromSupabase();
+  // 🔴 REMOVED: await hydrateFromSupabase() — ephemeral in Vercel, causes slow 10-table reload
   await recordActivity({
     action: "TRANSAKSI_KASIR",
     description: `Transaksi kasir ${invoiceNumber} sebesar Rp ${payload.grandTotal.toLocaleString("id-ID")} di Cabang ${txBranch} (${payload.customerName}) oleh ${barber.name}`,
@@ -3406,26 +3440,66 @@ export async function getDashboardData(
 // -------------------------------------------------------------
 
 export async function getCategoryReport(categorySlug: string | string[], startDate?: Date, endDate?: Date, branch?: string) {
+  const slugs = Array.isArray(categorySlug) ? categorySlug : [categorySlug];
+  const dbUrl = process.env.DATABASE_URL || "";
+  const hasPersistentDb = !!dbUrl && !dbUrl.includes("[YOUR-") && !dbUrl.includes("placeholder");
+
+  if (hasPersistentDb) {
+    const prods = await prisma.product.findMany({
+      where: { category: { slug: { in: slugs } }, isActive: true },
+      include: { category: true },
+    }).catch(() => []);
+
+    let totalSold = 0; let totalOmzet = 0; let totalModal = 0; let currentStock = 0;
+    const productStats: any[] = [];
+
+    for (const prod of prods) {
+      const prodStock = prod.stock || 0;
+      currentStock += prodStock;
+
+      const txFilter: any = { productId: prod.id };
+      if (branch && branch !== "All") txFilter.transaction = { branch };
+      if (startDate || endDate) {
+        txFilter.transaction = { ...(txFilter.transaction || {}), createdAt: {} };
+        if (startDate) txFilter.transaction.createdAt.gte = startDate;
+        if (endDate) txFilter.transaction.createdAt.lte = endDate;
+      }
+
+      const items = await prisma.transactionItem.findMany({ where: txFilter }).catch(() => []);
+      let prodSold = 0; let prodOmzet = 0; let prodModal = 0;
+      for (const it of items) {
+        prodSold += it.quantity;
+        prodOmzet += it.subtotal;
+        prodModal += (it.costPrice || prod.costPrice || 0) * it.quantity;
+      }
+      totalSold += prodSold; totalOmzet += prodOmzet; totalModal += prodModal;
+      productStats.push({
+        id: prod.id, sku: prod.sku, name: prod.name,
+        categoryName: (prod as any).category?.name || "Produk",
+        sellingPrice: prod.sellingPrice, costPrice: prod.costPrice,
+        stock: prodStock, sold: prodSold, omzet: prodOmzet, modal: prodModal, profit: prodOmzet - prodModal,
+      });
+    }
+    productStats.sort((a, b) => b.sold - a.sold);
+    return { categorySlugs: slugs, totalSold, totalOmzet, totalModal, totalProfit: totalOmzet - totalModal, currentStock, topProducts: productStats };
+  }
+
+  // Memory fallback
   await initMemoryDBIfNeeded();
   syncFromLocalDB();
+  const catIds = (memoryDB.categories || []).filter((c: any) => slugs.includes(c.slug)).map((c: any) => c.id);
+  const prods = (memoryDB.products || []).filter((p: any) => catIds.includes(p.categoryId));
 
-  const slugs = Array.isArray(categorySlug) ? categorySlug : [categorySlug];
-  const catIds = (memoryDB.categories || []).filter((c) => slugs.includes(c.slug)).map((c) => c.id);
-  const prods = (memoryDB.products || []).filter((p) => catIds.includes(p.categoryId));
-
-  let totalSold = 0;
-  let totalOmzet = 0;
-  let totalModal = 0;
-  let currentStock = 0;
+  let totalSold = 0; let totalOmzet = 0; let totalModal = 0; let currentStock = 0;
   const productStats: any[] = [];
 
   for (const prod of prods) {
     const prodStock = branch === "Suta" ? (prod.stockSuta ?? prod.stock) : branch === "Telkom" ? (prod.stockTelkom ?? prod.stock) : (prod.stock || 0);
     currentStock += prodStock;
-    const cat = (memoryDB.categories || []).find((c) => c.id === prod.categoryId);
-    const items = (memoryDB.transactionItems || []).filter((i) => {
+    const cat = (memoryDB.categories || []).find((c: any) => c.id === prod.categoryId);
+    const items = (memoryDB.transactionItems || []).filter((i: any) => {
       if (i.productId !== prod.id) return false;
-      const tx = (memoryDB.transactions || []).find((t) => t.id === i.transactionId);
+      const tx = (memoryDB.transactions || []).find((t: any) => t.id === i.transactionId);
       if (!tx) return false;
       if (branch && branch !== "All" && tx.branch !== branch) return false;
       if (startDate || endDate) {
@@ -3435,53 +3509,24 @@ export async function getCategoryReport(categorySlug: string | string[], startDa
       }
       return true;
     });
-
-    let prodSold = 0;
-    let prodOmzet = 0;
-    let prodModal = 0;
-
+    let prodSold = 0; let prodOmzet = 0; let prodModal = 0;
     for (const it of items) {
-      prodSold += it.quantity;
-      prodOmzet += it.subtotal;
+      prodSold += it.quantity; prodOmzet += it.subtotal;
       prodModal += (it.costPrice || prod.costPrice || 0) * it.quantity;
     }
-
-    totalSold += prodSold;
-    totalOmzet += prodOmzet;
-    totalModal += prodModal;
-
+    totalSold += prodSold; totalOmzet += prodOmzet; totalModal += prodModal;
     productStats.push({
-      id: prod.id,
-      sku: prod.sku,
-      name: prod.name,
+      id: prod.id, sku: prod.sku, name: prod.name,
       categoryName: cat?.name || "Produk",
-      sellingPrice: prod.sellingPrice,
-      costPrice: prod.costPrice,
-      stock: prodStock,
-      sold: prodSold,
-      omzet: prodOmzet,
-      modal: prodModal,
-      profit: prodOmzet - prodModal,
+      sellingPrice: prod.sellingPrice, costPrice: prod.costPrice,
+      stock: prodStock, sold: prodSold, omzet: prodOmzet, modal: prodModal, profit: prodOmzet - prodModal,
     });
   }
-
   productStats.sort((a, b) => b.sold - a.sold);
-
-  return {
-    categorySlugs: slugs,
-    totalSold,
-    totalOmzet,
-    totalModal,
-    totalProfit: totalOmzet - totalModal,
-    currentStock,
-    topProducts: productStats,
-  };
+  return { categorySlugs: slugs, totalSold, totalOmzet, totalModal, totalProfit: totalOmzet - totalModal, currentStock, topProducts: productStats };
 }
 
 export async function getDailyReport(dateStr?: string, branch?: string) {
-  await initMemoryDBIfNeeded();
-  syncFromLocalDB();
-
   let targetDate = new Date();
   if (dateStr) {
     const parts = dateStr.split("-").map(Number);
@@ -3499,184 +3544,211 @@ export async function getDailyReport(dateStr?: string, branch?: string) {
     getCategoryReport(["tonic", "powder"], start, end, branch),
   ]);
 
-  let txs = (memoryDB.transactions || [])
-    .filter((t) => {
-      const d = new Date(t.createdAt);
-      return d >= start && d <= end;
-    })
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  const dbUrl = process.env.DATABASE_URL || "";
+  const hasPersistentDb = !!dbUrl && !dbUrl.includes("[YOUR-") && !dbUrl.includes("placeholder");
 
-  if (branch && branch !== "All") {
-    txs = txs.filter((t) => t.branch === branch);
-  }
+  if (hasPersistentDb) {
+    const txWhere: any = { createdAt: { gte: start, lte: end } };
+    if (branch && branch !== "All") txWhere.branch = branch;
+    const barberWhere: any = { isActive: true };
+    if (branch && branch !== "All") barberWhere.workingBranch = branch;
 
-  let serviceSales = 0;
-  let productSales = 0;
-  let totalOmzet = 0;
+    const [txs, cashEntries, barbermanList, bookingsCount, newMembersCount] = await Promise.all([
+      prisma.transaction.findMany({ where: txWhere, include: { items: true, payments: true, barberman: true, customer: true }, orderBy: { createdAt: "desc" } }).catch(() => [] as any[]),
+      prisma.cashTransaction.findMany({ where: { createdAt: { gte: start, lte: end }, ...(branch && branch !== "All" ? { branch } : {}) } }).catch(() => [] as any[]),
+      prisma.barberman.findMany({ where: barberWhere, orderBy: { name: "asc" } }).catch(() => [] as any[]),
+      prisma.booking.count({ where: { bookingDate: { gte: start, lte: end } } }).catch(() => 0),
+      prisma.member.count({ where: { createdAt: { gte: start, lte: end } } }).catch(() => 0),
+    ]);
 
-  for (const tx of txs) {
-    totalOmzet += tx.grandTotal || 0;
-    const items = (memoryDB.transactionItems || []).filter((i) => i.transactionId === tx.id);
-    for (const item of items) {
-      if (item.itemType === "SERVICE") serviceSales += (item.subtotal || 0);
-      else if (item.itemType === "PRODUCT") productSales += (item.subtotal || 0);
-    }
-  }
+    let serviceSales = 0; let productSales = 0; let totalOmzet = 0;
+    let cashIn = 0; let cashOut = 0;
 
-  let cashEntries = (memoryDB.cashTransactions || []).filter((c) => {
-    const d = new Date(c.createdAt);
-    return d >= start && d <= end;
-  });
-  if (branch && branch !== "All") {
-    cashEntries = cashEntries.filter((c) => !c.branch || c.branch === branch || c.branch === "All");
-  }
-
-  let cashIn = 0;
-  let cashOut = 0;
-  for (const c of cashEntries) {
-    if (c.type === "CASH_IN") cashIn += (c.amount || 0);
-    else if (c.type === "CASH_OUT") cashOut += (c.amount || 0);
-  }
-
-  let barberList = (memoryDB.barbermen || []).filter((b) => b.isActive);
-  if (branch && branch !== "All") {
-    barberList = barberList.filter((b) => (b.workingBranch || b.branch) === branch);
-  }
-
-  const barbermanStats = barberList.map((b) => {
-    const bTxs = txs.filter((t) => t.barbermanId === b.id);
-    const bOmzet = bTxs.reduce((sum, t) => sum + (t.grandTotal || 0), 0);
-    const uniqueCust = new Set(bTxs.map((t) => t.customerId || t.customerName)).size;
-    let srvCount = 0;
-    for (const t of bTxs) {
-      const items = (memoryDB.transactionItems || []).filter((i) => i.transactionId === t.id);
-      for (const it of items) {
-        if (it.itemType === "SERVICE") srvCount += (it.quantity || 1);
+    for (const tx of txs) {
+      totalOmzet += (tx as any).grandTotal || 0;
+      for (const item of (tx as any).items || []) {
+        if (item.itemType === "SERVICE") serviceSales += item.subtotal || 0;
+        else if (item.itemType === "PRODUCT") productSales += item.subtotal || 0;
       }
     }
-    return {
-      id: b.id,
-      name: b.name,
-      customerCount: uniqueCust,
-      transactionCount: bTxs.length,
-      serviceCount: srvCount,
-      omzet: bOmzet,
-    };
-  });
+    for (const c of cashEntries) {
+      if ((c as any).type === "CASH_IN") cashIn += (c as any).amount || 0;
+      else if ((c as any).type === "CASH_OUT") cashOut += (c as any).amount || 0;
+    }
 
-  let bookingsList = (memoryDB.bookings || []).filter((b) => {
-    const d = new Date(b.bookingDate);
-    return d >= start && d <= end;
-  });
-  if (branch && branch !== "All") {
-    bookingsList = bookingsList.filter((b) => b.branch === branch);
+    const barbermanStats = barbermanList.map((b: any) => {
+      const bTxs = txs.filter((t: any) => t.barbermanId === b.id);
+      const bOmzet = bTxs.reduce((s: number, t: any) => s + (t.grandTotal || 0), 0);
+      const uniqueCust = new Set(bTxs.map((t: any) => t.customerId || t.customerName)).size;
+      let srvCount = 0;
+      for (const t of bTxs) { for (const it of (t as any).items || []) { if (it.itemType === "SERVICE") srvCount += it.quantity || 1; } }
+      return { id: b.id, name: b.name, customerCount: uniqueCust, transactionCount: bTxs.length, serviceCount: srvCount, omzet: bOmzet };
+    });
+
+    return {
+      date: format(targetDate, "yyyy-MM-dd"), branch: branch || "All",
+      totalCustomers: txs.length, totalTransactions: txs.length,
+      totalOmzet, serviceSales, productSales,
+      pomadeSold: pomadeReport.totalSold, pomadeOmzet: pomadeReport.totalOmzet,
+      tonicPowderSold: tonicPowderReport.totalSold, tonicPowderOmzet: tonicPowderReport.totalOmzet,
+      cashIn, cashOut, cashEnding: cashIn - cashOut,
+      bookingsCount, newMembersCount,
+      barbermanPerformance: barbermanStats,
+      transactions: txs,
+    };
   }
 
-  const newMembersCount = (memoryDB.members || []).filter((m) => {
-    const d = new Date(m.createdAt);
-    return d >= start && d <= end;
-  }).length;
+  // Memory fallback
+  await initMemoryDBIfNeeded();
+  syncFromLocalDB();
+  let txs = (memoryDB.transactions || [])
+    .filter((t: any) => { const d = new Date(t.createdAt); return d >= start && d <= end; })
+    .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  if (branch && branch !== "All") txs = txs.filter((t: any) => t.branch === branch);
+
+  let serviceSales = 0; let productSales = 0; let totalOmzet = 0;
+  for (const tx of txs) {
+    totalOmzet += tx.grandTotal || 0;
+    const items = (memoryDB.transactionItems || []).filter((i: any) => i.transactionId === tx.id);
+    for (const item of items) {
+      if (item.itemType === "SERVICE") serviceSales += item.subtotal || 0;
+      else if (item.itemType === "PRODUCT") productSales += item.subtotal || 0;
+    }
+  }
+
+  let cashEntries = (memoryDB.cashTransactions || []).filter((c: any) => { const d = new Date(c.createdAt); return d >= start && d <= end; });
+  if (branch && branch !== "All") cashEntries = cashEntries.filter((c: any) => !c.branch || c.branch === branch || c.branch === "All");
+  let cashIn = 0; let cashOut = 0;
+  for (const c of cashEntries) {
+    if (c.type === "CASH_IN") cashIn += c.amount || 0;
+    else if (c.type === "CASH_OUT") cashOut += c.amount || 0;
+  }
+
+  let barberList = (memoryDB.barbermen || []).filter((b: any) => b.isActive);
+  if (branch && branch !== "All") barberList = barberList.filter((b: any) => (b.workingBranch || b.branch) === branch);
+  const barbermanStats = barberList.map((b: any) => {
+    const bTxs = txs.filter((t: any) => t.barbermanId === b.id);
+    const bOmzet = bTxs.reduce((sum: number, t: any) => sum + (t.grandTotal || 0), 0);
+    const uniqueCust = new Set(bTxs.map((t: any) => t.customerId || t.customerName)).size;
+    let srvCount = 0;
+    for (const t of bTxs) { const items = (memoryDB.transactionItems || []).filter((i: any) => i.transactionId === t.id); for (const it of items) { if (it.itemType === "SERVICE") srvCount += it.quantity || 1; } }
+    return { id: b.id, name: b.name, customerCount: uniqueCust, transactionCount: bTxs.length, serviceCount: srvCount, omzet: bOmzet };
+  });
+
+  let bookingsList = (memoryDB.bookings || []).filter((b: any) => { const d = new Date(b.bookingDate); return d >= start && d <= end; });
+  if (branch && branch !== "All") bookingsList = bookingsList.filter((b: any) => b.branch === branch);
+  const newMembersCount = (memoryDB.members || []).filter((m: any) => { const d = new Date(m.createdAt); return d >= start && d <= end; }).length;
 
   return {
-    date: format(targetDate, "yyyy-MM-dd"),
-    branch: branch || "All",
-    totalCustomers: txs.length,
-    totalTransactions: txs.length,
-    totalOmzet,
-    serviceSales,
-    productSales,
-    pomadeSold: pomadeReport.totalSold,
-    pomadeOmzet: pomadeReport.totalOmzet,
-    tonicPowderSold: tonicPowderReport.totalSold,
-    tonicPowderOmzet: tonicPowderReport.totalOmzet,
-    cashIn,
-    cashOut,
-    cashEnding: cashIn - cashOut,
-    bookingsCount: bookingsList.length,
-    newMembersCount,
+    date: format(targetDate, "yyyy-MM-dd"), branch: branch || "All",
+    totalCustomers: txs.length, totalTransactions: txs.length,
+    totalOmzet, serviceSales, productSales,
+    pomadeSold: pomadeReport.totalSold, pomadeOmzet: pomadeReport.totalOmzet,
+    tonicPowderSold: tonicPowderReport.totalSold, tonicPowderOmzet: tonicPowderReport.totalOmzet,
+    cashIn, cashOut, cashEnding: cashIn - cashOut,
+    bookingsCount: bookingsList.length, newMembersCount,
     barbermanPerformance: barbermanStats,
-    transactions: txs.map((t) => ({
+    transactions: txs.map((t: any) => ({
       ...t,
-      barberman: (memoryDB.barbermen || []).find((b) => b.id === t.barbermanId) || null,
-      items: (memoryDB.transactionItems || []).filter((i) => i.transactionId === t.id),
-      payments: (memoryDB.payments || []).filter((p) => p.transactionId === t.id),
+      barberman: (memoryDB.barbermen || []).find((b: any) => b.id === t.barbermanId) || null,
+      items: (memoryDB.transactionItems || []).filter((i: any) => i.transactionId === t.id),
+      payments: (memoryDB.payments || []).filter((p: any) => p.transactionId === t.id),
     })),
   };
 }
 
 export async function getAnnualReport(year: number = new Date().getFullYear(), branch?: string) {
-  await initMemoryDBIfNeeded();
-  syncFromLocalDB();
-
-  const monthsData = [];
   const monthNames = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+  const dbUrl = process.env.DATABASE_URL || "";
+  const hasPersistentDb = !!dbUrl && !dbUrl.includes("[YOUR-") && !dbUrl.includes("placeholder");
 
-  for (let m = 0; m < 12; m++) {
-    let txs = (memoryDB.transactions || []).filter((t) => {
-      const d = new Date(t.createdAt);
-      return d.getFullYear() === year && d.getMonth() === m;
-    });
+  if (hasPersistentDb) {
+    const txWhere: any = { createdAt: { gte: new Date(year, 0, 1), lte: new Date(year, 11, 31, 23, 59, 59) } };
+    if (branch && branch !== "All") txWhere.branch = branch;
+    const txs = await prisma.transaction.findMany({ where: txWhere, include: { items: true } }).catch(() => [] as any[]);
 
-    if (branch && branch !== "All") {
-      txs = txs.filter((t) => t.branch === branch);
-    }
-
-    let omzet = 0;
-    let productOmzet = 0;
-    for (const t of txs) {
-      omzet += t.grandTotal || 0;
-      const items = (memoryDB.transactionItems || []).filter((i) => i.transactionId === t.id);
-      for (const it of items) {
-        if (it.itemType === "PRODUCT") productOmzet += (it.subtotal || 0);
+    const monthsData = [];
+    for (let m = 0; m < 12; m++) {
+      const monthTxs = txs.filter((t: any) => new Date(t.createdAt).getMonth() === m);
+      let omzet = 0; let productOmzet = 0;
+      for (const t of monthTxs) {
+        omzet += (t as any).grandTotal || 0;
+        for (const it of (t as any).items || []) { if (it.itemType === "PRODUCT") productOmzet += it.subtotal || 0; }
       }
+      monthsData.push({ month: monthNames[m], monthNumber: m + 1, customer: monthTxs.length, transactions: monthTxs.length, omzet, productOmzet });
     }
-
-    monthsData.push({
-      month: monthNames[m],
-      monthNumber: m + 1,
-      customer: txs.length,
-      transactions: txs.length,
-      omzet,
-      productOmzet,
-    });
+    return {
+      year, branch: branch || "All", months: monthsData,
+      summary: {
+        totalOmzet: monthsData.reduce((s, m) => s + m.omzet, 0),
+        totalCustomer: monthsData.reduce((s, m) => s + m.customer, 0),
+        totalTransactions: monthsData.reduce((s, m) => s + m.transactions, 0),
+        totalProductSales: monthsData.reduce((s, m) => s + m.productOmzet, 0),
+      },
+    };
   }
 
-  const totalOmzet = monthsData.reduce((s, m) => s + m.omzet, 0);
-  const totalCustomer = monthsData.reduce((s, m) => s + m.customer, 0);
-  const totalTransactions = monthsData.reduce((s, m) => s + m.transactions, 0);
-  const totalProductSales = monthsData.reduce((s, m) => s + m.productOmzet, 0);
-
+  // Memory fallback
+  await initMemoryDBIfNeeded();
+  syncFromLocalDB();
+  const monthsData = [];
+  for (let m = 0; m < 12; m++) {
+    let txs = (memoryDB.transactions || []).filter((t: any) => { const d = new Date(t.createdAt); return d.getFullYear() === year && d.getMonth() === m; });
+    if (branch && branch !== "All") txs = txs.filter((t: any) => t.branch === branch);
+    let omzet = 0; let productOmzet = 0;
+    for (const t of txs) {
+      omzet += t.grandTotal || 0;
+      const items = (memoryDB.transactionItems || []).filter((i: any) => i.transactionId === t.id);
+      for (const it of items) { if (it.itemType === "PRODUCT") productOmzet += it.subtotal || 0; }
+    }
+    monthsData.push({ month: monthNames[m], monthNumber: m + 1, customer: txs.length, transactions: txs.length, omzet, productOmzet });
+  }
   return {
-    year,
-    branch: branch || "All",
-    months: monthsData,
+    year, branch: branch || "All", months: monthsData,
     summary: {
-      totalOmzet,
-      totalCustomer,
-      totalTransactions,
-      totalProductSales,
+      totalOmzet: monthsData.reduce((s, m) => s + m.omzet, 0),
+      totalCustomer: monthsData.reduce((s, m) => s + m.customer, 0),
+      totalTransactions: monthsData.reduce((s, m) => s + m.transactions, 0),
+      totalProductSales: monthsData.reduce((s, m) => s + m.productOmzet, 0),
     },
   };
 }
 
 export async function getMonthlyReport(yearNum?: number, monthNum?: number, branch?: string) {
-  await initMemoryDBIfNeeded();
-  syncFromLocalDB();
-
   const now = new Date();
   const year = yearNum ?? now.getFullYear();
-  const month = monthNum ?? now.getMonth(); // 0-indexed
+  const month = monthNum !== undefined ? monthNum : now.getMonth(); // 0-indexed
 
   const startM = new Date(year, month, 1, 0, 0, 0);
   const endM = endOfMonth(startM);
 
-  let txs = (memoryDB.transactions || []).filter((t) => {
-    const d = new Date(t.createdAt);
-    return d.getFullYear() === year && d.getMonth() === month;
-  });
+  const dbUrl = process.env.DATABASE_URL || "";
+  const hasPersistentDb = !!dbUrl && !dbUrl.includes("[YOUR-") && !dbUrl.includes("placeholder");
 
-  if (branch && branch !== "All") {
-    txs = txs.filter((t) => t.branch === branch);
+  let txs: any[] = [];
+  let cashEntries: any[] = [];
+  let barberList: any[] = [];
+
+  if (hasPersistentDb) {
+    const txWhere: any = { createdAt: { gte: startM, lte: endM } };
+    if (branch && branch !== "All") txWhere.branch = branch;
+    [txs, cashEntries, barberList] = await Promise.all([
+      prisma.transaction.findMany({ where: txWhere, include: { items: true }, orderBy: { createdAt: "desc" } }).catch(() => []),
+      prisma.cashTransaction.findMany({ where: { createdAt: { gte: startM, lte: endM }, ...(branch && branch !== "All" ? { branch } : {}) } }).catch(() => []),
+      prisma.barberman.findMany({ where: { isActive: true, ...(branch && branch !== "All" ? { workingBranch: branch } : {}) }, orderBy: { name: "asc" } }).catch(() => []),
+    ]);
+    // Items already included in txs
+  } else {
+    await initMemoryDBIfNeeded();
+    syncFromLocalDB();
+    txs = (memoryDB.transactions || []).filter((t: any) => { const d = new Date(t.createdAt); return d.getFullYear() === year && d.getMonth() === month; });
+    if (branch && branch !== "All") txs = txs.filter((t: any) => t.branch === branch);
+    cashEntries = (memoryDB.cashTransactions || []).filter((c: any) => { const d = new Date(c.createdAt); return d.getFullYear() === year && d.getMonth() === month; });
+    if (branch && branch !== "All") cashEntries = cashEntries.filter((c: any) => !c.branch || c.branch === branch || c.branch === "All");
+    barberList = (memoryDB.barbermen || []).filter((b: any) => b.isActive);
+    if (branch && branch !== "All") barberList = barberList.filter((b: any) => (b.workingBranch || b.branch) === branch);
+    // Attach items from memoryDB
+    txs = txs.map((t: any) => ({ ...t, items: (memoryDB.transactionItems || []).filter((i: any) => i.transactionId === t.id) }));
   }
 
   let totalOmzet = 0;
@@ -3690,139 +3762,79 @@ export async function getMonthlyReport(yearNum?: number, monthNum?: number, bran
     TRANSFER: { count: 0, total: 0 },
     DEBIT: { count: 0, total: 0 },
   };
-
   const serviceMap: Record<string, { name: string; category: string; count: number; omzet: number }> = {};
   const productMap: Record<string, { name: string; sku: string; category: string; count: number; omzet: number; modal: number; stock: number }> = {};
 
   for (const tx of txs) {
     totalOmzet += tx.grandTotal || 0;
-
     const pm = (tx.paymentMethod || "CASH").toUpperCase();
     if (!paymentMap[pm]) paymentMap[pm] = { count: 0, total: 0 };
     paymentMap[pm].count += 1;
-    paymentMap[pm].total += (tx.grandTotal || 0);
+    paymentMap[pm].total += tx.grandTotal || 0;
 
-    const items = (memoryDB.transactionItems || []).filter((i) => i.transactionId === tx.id);
+    const items = tx.items || [];
     for (const it of items) {
       if (it.itemType === "SERVICE") {
-        serviceSales += (it.subtotal || 0);
-        if (!serviceMap[it.name]) {
-          serviceMap[it.name] = { name: it.name, category: "Haircut & Grooming", count: 0, omzet: 0 };
-        }
-        serviceMap[it.name].count += (it.quantity || 1);
-        serviceMap[it.name].omzet += (it.subtotal || 0);
+        serviceSales += it.subtotal || 0;
+        if (!serviceMap[it.name]) serviceMap[it.name] = { name: it.name, category: "Haircut & Grooming", count: 0, omzet: 0 };
+        serviceMap[it.name].count += it.quantity || 1;
+        serviceMap[it.name].omzet += it.subtotal || 0;
       } else if (it.itemType === "PRODUCT") {
-        productSales += (it.subtotal || 0);
+        productSales += it.subtotal || 0;
         const itemCost = (it.costPrice || 0) * (it.quantity || 1);
         productCost += itemCost;
-
-        if (!productMap[it.name]) {
-          const pObj = (memoryDB.products || []).find((p) => p.name === it.name || p.id === it.productId);
-          const pStock = branch === "Suta" ? (pObj?.stockSuta ?? pObj?.stock) : branch === "Telkom" ? (pObj?.stockTelkom ?? pObj?.stock) : (pObj?.stock || 0);
-          productMap[it.name] = {
-            name: it.name,
-            sku: pObj?.sku || "-",
-            category: "Retail Grooming",
-            count: 0,
-            omzet: 0,
-            modal: 0,
-            stock: pStock,
-          };
-        }
-        productMap[it.name].count += (it.quantity || 1);
-        productMap[it.name].omzet += (it.subtotal || 0);
+        if (!productMap[it.name]) productMap[it.name] = { name: it.name, sku: "-", category: "Retail Grooming", count: 0, omzet: 0, modal: 0, stock: 0 };
+        productMap[it.name].count += it.quantity || 1;
+        productMap[it.name].omzet += it.subtotal || 0;
         productMap[it.name].modal += itemCost;
       }
     }
   }
 
-  let cashEntries = (memoryDB.cashTransactions || []).filter((c) => {
-    const d = new Date(c.createdAt);
-    return d.getFullYear() === year && d.getMonth() === month;
-  });
-  if (branch && branch !== "All") {
-    cashEntries = cashEntries.filter((c) => !c.branch || c.branch === branch || c.branch === "All");
-  }
-
-  let cashIn = 0;
-  let cashOut = 0;
+  let cashIn = 0; let cashOut = 0;
   const expensesList: any[] = [];
-
   for (const c of cashEntries) {
     if (c.type === "CASH_IN") {
-      cashIn += (c.amount || 0);
+      cashIn += c.amount || 0;
     } else if (c.type === "CASH_OUT") {
-      cashOut += (c.amount || 0);
-      expensesList.push({
-        id: c.id,
-        category: c.category || "Operasional",
-        description: c.description,
-        amount: c.amount,
-        date: format(new Date(c.createdAt), "yyyy-MM-dd HH:mm"),
-      });
+      cashOut += c.amount || 0;
+      expensesList.push({ id: c.id, category: c.category || "Operasional", description: c.description, amount: c.amount, date: format(new Date(c.createdAt), "yyyy-MM-dd HH:mm") });
     }
   }
 
   const grossProfit = serviceSales + (productSales - productCost);
   const netOperatingIncome = grossProfit - cashOut;
 
-  let barberList = (memoryDB.barbermen || []).filter((b) => b.isActive);
-  if (branch && branch !== "All") {
-    barberList = barberList.filter((b) => (b.workingBranch || b.branch) === branch);
-  }
-
-  const barbermanStats = barberList.map((b) => {
-    const bTxs = txs.filter((t) => t.barbermanId === b.id);
-    const bOmzet = bTxs.reduce((sum, t) => sum + (t.grandTotal || 0), 0);
-    const bCust = new Set(bTxs.map((t) => t.customerId || t.customerName)).size;
-    const bTrans = bTxs.length;
+  const barbermanStats = barberList.map((b: any) => {
+    const bTxs = txs.filter((t: any) => t.barbermanId === b.id);
+    const bOmzet = bTxs.reduce((sum: number, t: any) => sum + (t.grandTotal || 0), 0);
+    const bCust = new Set(bTxs.map((t: any) => t.customerId || t.customerName)).size;
     return {
-      id: b.id,
-      name: b.name,
-      customerCount: bCust,
-      transactionCount: bTrans,
-      omzet: bOmzet,
+      id: b.id, name: b.name,
+      customerCount: bCust, transactionCount: bTxs.length, omzet: bOmzet,
       averagePerCustomer: bCust > 0 ? Math.round(bOmzet / bCust) : 0,
       contributionPercentage: totalOmzet > 0 ? Number(((bOmzet / totalOmzet) * 100).toFixed(1)) : 0,
     };
   });
 
   const paymentsBreakdown = Object.entries(paymentMap).map(([method, val]) => ({
-    method,
-    transactionCount: val.count,
-    totalAmount: val.total,
+    method, transactionCount: val.count, totalAmount: val.total,
     percentage: totalOmzet > 0 ? Number(((val.total / totalOmzet) * 100).toFixed(1)) : 0,
   }));
 
   const topServices = Object.values(serviceMap).sort((a, b) => b.omzet - a.omzet);
-  const topProducts = Object.values(productMap).map((p) => ({
-    ...p,
-    profit: p.omzet - p.modal,
-  })).sort((a, b) => b.omzet - a.omzet);
+  const topProducts = Object.values(productMap).map((p) => ({ ...p, profit: p.omzet - p.modal })).sort((a, b) => b.omzet - a.omzet);
 
   return {
-    year,
-    month: month + 1,
-    monthName: format(startM, "MMMM yyyy"),
+    year, month: month + 1, monthName: format(startM, "MMMM yyyy"),
     branch: branch || "All",
-    totalCustomers: txs.length,
-    totalTransactions: txs.length,
-    totalOmzet,
-    serviceSales,
-    productSales,
-    productCost,
-    grossProfit,
-    cashExpenses: cashOut,
-    netOperatingIncome,
-    cashIn,
-    cashOut,
+    totalCustomers: txs.length, totalTransactions: txs.length,
+    totalOmzet, serviceSales, productSales, productCost, grossProfit,
+    cashExpenses: cashOut, netOperatingIncome, cashIn, cashOut,
     cashEnding: cashIn - cashOut,
     averageTicketSize: txs.length > 0 ? Math.round(totalOmzet / txs.length) : 0,
     barbermanPerformance: barbermanStats,
-    paymentsBreakdown,
-    topServices,
-    topProducts,
-    expensesList,
+    paymentsBreakdown, topServices, topProducts, expensesList,
   };
 }
 

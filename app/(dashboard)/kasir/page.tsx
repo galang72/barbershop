@@ -84,52 +84,36 @@ export default function KasirPage() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Fetch initial master data
+  // Fetch initial master data — single aggregated request instead of 5 waterfall calls
   const loadMasterData = async () => {
     try {
       const t = Date.now();
-      const [resB, resS, resP, resSettings, resSess] = await Promise.all([
-        fetch(`/api/barbermen?all=true&_t=${t}`, { cache: "no-store" }),
-        fetch(`/api/services?_t=${t}`, { cache: "no-store" }),
-        fetch(`/api/products?includeCategories=true&_t=${t}`, { cache: "no-store" }),
-        fetch(`/api/settings?_t=${t}`, { cache: "no-store" }),
-        fetch(`/api/auth/me?_t=${t}`, { cache: "no-store" }),
-      ]);
+      const res = await fetch(`/api/kasir/master?_t=${t}`, { cache: "no-store" });
+      if (!res.ok) throw new Error("Failed to load kasir master data");
+      const data = await res.json();
 
-      const dataB = await resB.json();
-      const dataS = await resS.json();
-      const dataP = await resP.json();
-      const dataSet = await resSettings.json();
-      const dataSess = await resSess.json();
-      setSession(dataSess?.user);
+      setSession(data.user);
+      setShopSettings(data.shopSettings);
 
-      // Filter: hanya barberman isActive=true DAN bertugas di cabang admin yang login
-      const myBranch = dataSess?.user?.branch || dataSess?.branch;
-
-      const filteredBarbermen = Array.isArray(dataB)
-        ? dataB.filter((b: any) => {
-            if (b.isActive === false) return false;        // libur → tidak tampil
-            if (myBranch && myBranch !== "All") {
-              return b.branch === myBranch;               // hanya cabang yg sama
-            }
-            return true;                                  // Owner → semua aktif
+      const myBranch = data.user?.branch || data.user?.user?.branch;
+      const filteredBarbermen = Array.isArray(data.barbermen)
+        ? data.barbermen.filter((b: any) => {
+            if (b.isActive === false) return false;
+            if (myBranch && myBranch !== "All") return b.branch === myBranch;
+            return true;
           })
         : [];
 
       setBarbermen(filteredBarbermen);
-      // Set default barberman pertama yang aktif di cabang ini
       if (filteredBarbermen.length > 0) {
         setSelectedBarbermanId((prev) =>
-          filteredBarbermen.some((b: any) => b.id === prev)
-            ? prev
-            : filteredBarbermen[0].id
+          filteredBarbermen.some((b: any) => b.id === prev) ? prev : filteredBarbermen[0].id
         );
       }
 
-      setServices(dataS);
-      setProducts(dataP.products || []);
-      setCategories(dataP.categories || []);
-      setShopSettings(dataSet);
+      setServices(Array.isArray(data.services) ? data.services : []);
+      setProducts(Array.isArray(data.products) ? data.products : []);
+      setCategories(Array.isArray(data.categories) ? data.categories : []);
     } catch (err) {
       console.error("Failed to load cashier data", err);
     }
