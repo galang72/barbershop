@@ -8,9 +8,12 @@ import { Badge } from "@/components/ui/badge";
 import { Modal } from "@/components/ui/modal";
 import { formatRupiah } from "@/lib/utils";
 
+// ⚡ Module-level SWR cache
+let _layananClientCache: any[] | null = null;
+
 export default function LayananPage() {
-  const [services, setServices] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [services, setServices] = useState<any[]>(_layananClientCache || []);
+  const [loading, setLoading] = useState(!_layananClientCache);
 
   // Modal State
   const [modalOpen, setModalOpen] = useState(false);
@@ -22,11 +25,12 @@ export default function LayananPage() {
   const [saving, setSaving] = useState(false);
 
   const fetchServices = async () => {
-    setLoading(true);
+    if (!_layananClientCache) setLoading(true);
     try {
       const res = await fetch("/api/services?all=true");
       const json = await res.json();
       setServices(json);
+      _layananClientCache = json;
     } catch (e) {
       console.error(e);
     } finally {
