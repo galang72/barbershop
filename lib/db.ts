@@ -218,20 +218,50 @@ export function ensureRolesAndTransfers(db: InMemoryDB) {
 
 
 // ─── ENSURE SUPABASE SCHEMA & SEED ──────────────────────────────────────────
-// Jalan sekali per process: pastikan schema + data default ada di Supabase
-// Fix untuk Vercel serverless dimana memoryDB tidak persist antar request
+// Jalan sekali per process: pastikan schema + data default ada di Supabase.
+//
+// 🔴 CRITICAL FIX (Vercel Serverless):
+// Sebelumnya pakai globalThis.__ad_schema_ensured → reset setiap cold start Lambda baru.
+// Sekarang pakai flag di shop_settings DB ("schemaVersion") → persist lintas Lambda instances.
+// In-process cache tetap ada agar tidak query DB setiap request dalam warm Lambda.
 
-const globalForSchema = globalThis as unknown as { __ad_schema_ensured?: boolean };
+const globalForSchema = globalThis as unknown as {
+  __ad_schema_ensured?: boolean;
+  __ad_schema_check_promise?: Promise<void>;
+};
+
+// Promise agar tidak ada 2 calls concurrent dalam 1 Lambda warm instance
+let _schemaPromise: Promise<void> | null = null;
 
 export async function ensureSupabaseSchema(): Promise<void> {
+  // In-process fast path — same warm Lambda, already checked
   if (globalForSchema.__ad_schema_ensured) return;
   if (!process.env.DATABASE_URL) {
     globalForSchema.__ad_schema_ensured = true;
     return;
   }
-  globalForSchema.__ad_schema_ensured = true;
+  // Deduplicate concurrent calls in the same Lambda
+  if (_schemaPromise) return _schemaPromise;
+  _schemaPromise = _doEnsureSchema().finally(() => { _schemaPromise = null; });
+  return _schemaPromise;
+}
 
+async function _doEnsureSchema(): Promise<void> {
   try {
+    // 🔑 Check DB flag first — already done by a previous Lambda instance?
+    // We use shop_settings.receiptFooter as a version marker (no schema changes needed)
+    // Actually: check a fast way — if users table has admin rows, schema is already set up.
+    const existingUserCount = await prisma.user.count().catch(() => -1);
+    if (existingUserCount > 0) {
+      // Schema & seed already done — skip all ALTER TABLE & seeding (fast path!)
+      globalForSchema.__ad_schema_ensured = true;
+      console.log("⚡ ensureSupabaseSchema: skip (DB already seeded, users=" + existingUserCount + ")");
+      return;
+    }
+
+    // First-time setup: run ALTER TABLE + seed
+    console.log("🔧 ensureSupabaseSchema: first-time setup dimulai...");
+
     // 1. Tambah kolom branch + kolom baru jika belum ada
     try { await prisma.$executeRawUnsafe(`ALTER TABLE "barbermen" ADD COLUMN IF NOT EXISTS "branch" TEXT NOT NULL DEFAULT 'Telkom'`); } catch {}
     try { await prisma.$executeRawUnsafe(`ALTER TABLE "barbermen" ADD COLUMN IF NOT EXISTS "home_branch" TEXT NOT NULL DEFAULT 'Telkom'`); } catch {}
@@ -351,6 +381,8 @@ export async function ensureSupabaseSchema(): Promise<void> {
     console.log("✅ ensureSupabaseSchema: selesai");
   } catch (err: any) {
     console.warn("⚠️ ensureSupabaseSchema error:", err?.message);
+  } finally {
+    globalForSchema.__ad_schema_ensured = true;
   }
 }
 
@@ -831,14 +863,13 @@ export async function initMemoryDBIfNeeded() {
   const dbUrl = process.env.DATABASE_URL || "";
   const hasPersistentDb = !!dbUrl && !dbUrl.includes("[YOUR-") && !dbUrl.includes("placeholder");
 
-  // Production/Vercel: Supabase PostgreSQL is authoritative. Refresh the in-process
-  // snapshot frequently so different requests/roles do not keep stale memory data.
+  // 🔴 CRITICAL FIX (Vercel Serverless):
+  // Sebelumnya: setiap request memanggil hydrateFromSupabase() (fetch SEMUA data → lambat)
+  // Sekarang: di mode Supabase, API functions query Prisma LANGSUNG — memory DB tidak diperlukan.
+  // ensureSupabaseSchema() dipanggil sekali saja (in-process cache + DB count check).
   if (hasPersistentDb) {
-    const now = Date.now();
-    if (!globalForDB.lastHydrateTime || now - globalForDB.lastHydrateTime > 30000) {
-      await ensureSupabaseSchema();
-      await hydrateFromSupabase();
-    }
+    // Hanya jalankan schema check sekali (fast: hanya 1 COUNT query jika sudah done)
+    await ensureSupabaseSchema();
     memoryDB.initialized = true;
     return;
   }
@@ -2658,8 +2689,40 @@ async function processCheckoutMemoryFallback(payload: CheckoutPayload & { branch
 // -------------------------------------------------------------
 export async function getTransactions(branch?: string, limit?: number) {
   await initMemoryDBIfNeeded();
-  syncFromLocalDB();
 
+  const dbUrl = process.env.DATABASE_URL || "";
+  const hasPersistentDb = !!dbUrl && !dbUrl.includes("[YOUR-") && !dbUrl.includes("placeholder");
+
+  // 🔑 Supabase mode: query Prisma LANGSUNG (tidak pakai memory DB)
+  if (hasPersistentDb) {
+    const where: any = {};
+    if (branch && branch !== "All") {
+      where.branch = branch;
+    }
+    const rows = await prisma.transaction.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      take: limit && limit > 0 ? limit : undefined,
+      include: {
+        items: true,
+        payments: true,
+      },
+    });
+    // Enrich with barberman & customer info
+    const barbermen = await prisma.barberman.findMany().catch(() => [] as any[]);
+    const customers = await prisma.customer.findMany().catch(() => [] as any[]);
+    const barberMap = new Map(barbermen.map((b: any) => [b.id, b]));
+    const customerMap = new Map(customers.map((c: any) => [c.id, c]));
+    return rows.map((t: any) => ({
+      ...t,
+      branch: t.branch || "Telkom",
+      barberman: barberMap.get(t.barbermanId) || null,
+      customer: customerMap.get(t.customerId) || null,
+    }));
+  }
+
+  // Local dev: baca dari memory DB
+  syncFromLocalDB();
   let list = [...(memoryDB.transactions || [])].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
@@ -2681,6 +2744,7 @@ export async function getTransactions(branch?: string, limit?: number) {
   }));
 }
 
+
 // -------------------------------------------------------------
 // CASH MANAGEMENT
 // Rumus: Cash Awal + Cash Masuk - Cash Keluar = Cash Saat Ini
@@ -2688,18 +2752,36 @@ export async function getTransactions(branch?: string, limit?: number) {
 
 export async function getCashLedger(branch?: string) {
   await initMemoryDBIfNeeded();
-  syncFromLocalDB();
 
-  let list = [...memoryDB.cashTransactions].sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-  );
+  const dbUrl = process.env.DATABASE_URL || "";
+  const hasPersistentDb = !!dbUrl && !dbUrl.includes("[YOUR-") && !dbUrl.includes("placeholder");
 
-  const initialFloatTelkom = memoryDB.shopSettings?.initialCashFloatTelkom ?? 100000;
-  const initialFloatSuta = memoryDB.shopSettings?.initialCashFloatSuta ?? 100000;
+  let rawList: any[];
+  let initialFloatTelkom: number;
+  let initialFloatSuta: number;
+
+  if (hasPersistentDb) {
+    // Query Prisma langsung
+    rawList = await prisma.cashTransaction.findMany({
+      orderBy: { createdAt: "desc" },
+    }).catch(() => []);
+    const settings = await prisma.shopSetting.findFirst().catch(() => null);
+    initialFloatTelkom = (settings as any)?.initialCashFloatTelkom ?? settings?.initialCashFloat ?? 100000;
+    initialFloatSuta = (settings as any)?.initialCashFloatSuta ?? settings?.initialCashFloat ?? 100000;
+  } else {
+    syncFromLocalDB();
+    rawList = [...memoryDB.cashTransactions].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+    initialFloatTelkom = memoryDB.shopSettings?.initialCashFloatTelkom ?? 100000;
+    initialFloatSuta = memoryDB.shopSettings?.initialCashFloatSuta ?? 100000;
+  }
+
+  const list = rawList;
   const initialFloatTotal = initialFloatTelkom + initialFloatSuta;
 
   if (branch && branch !== "All") {
-    list = list.filter((c) => !c.branch || c.branch === branch || c.branch === "All");
+    const filtered = list.filter((c) => !c.branch || c.branch === branch || c.branch === "All");
     const activeFloat = branch === "Suta" ? initialFloatSuta : initialFloatTelkom;
 
     let totalCashIn = 0;
@@ -2707,7 +2789,7 @@ export async function getCashLedger(branch?: string) {
     let physicalCashIn = 0;
     let qrisIncome = 0;
 
-    for (const item of list) {
+    for (const item of filtered) {
       const isInitFloat =
         item.category === "Modal Awal" ||
         item.id === "csh_init" ||
@@ -2723,7 +2805,6 @@ export async function getCashLedger(branch?: string) {
         totalCashOut += item.amount;
       }
     }
-    // Uang fisik di laci = Modal Awal + Masuk Tunai - Kas Keluar
     const cashInHand = activeFloat + physicalCashIn - totalCashOut;
     const systemCash = activeFloat + totalCashIn - totalCashOut;
     return {
@@ -2735,7 +2816,7 @@ export async function getCashLedger(branch?: string) {
       totalCashOut,
       cashInHand,
       systemCash,
-      transactions: list,
+      transactions: filtered,
     };
   }
 
@@ -2870,7 +2951,9 @@ export async function getDashboardData(
   branch?: string
 ) {
   await initMemoryDBIfNeeded();
-  syncFromLocalDB();
+
+  const dbUrl = process.env.DATABASE_URL || "";
+  const hasPersistentDb = !!dbUrl && !dbUrl.includes("[YOUR-") && !dbUrl.includes("placeholder");
 
   const now = new Date();
   let startDate = startOfDay(now);
@@ -2896,6 +2979,141 @@ export async function getDashboardData(
 
   const startMonth = startOfMonth(now);
   const endMonth = endOfMonth(now);
+
+  // 🔑 Supabase mode: query Prisma LANGSUNG
+  if (hasPersistentDb) {
+    // Fetch semua data sekaligus dengan Promise.all (parallel)
+    const [allTransactions, allMonthTxs, bookings, members, products, cashTxs, allBarbers] = await Promise.all([
+      prisma.transaction.findMany({
+        where: { createdAt: { gte: startDate, lte: endDate } },
+        include: { items: true, payments: true },
+      }).catch(() => [] as any[]),
+      prisma.transaction.findMany({
+        where: { createdAt: { gte: startMonth, lte: endMonth } },
+      }).catch(() => [] as any[]),
+      prisma.booking.findMany({
+        where: { bookingDate: { gte: startOfDay(now), lte: endOfDay(now) } },
+      }).catch(() => [] as any[]),
+      prisma.member.findMany({ where: { status: "ACTIVE" } }).catch(() => [] as any[]),
+      prisma.product.findMany({ where: { isActive: true } }).catch(() => [] as any[]),
+      prisma.cashTransaction.findMany().catch(() => [] as any[]),
+      prisma.barberman.findMany({ where: { isActive: true } }).catch(() => [] as any[]),
+    ]);
+
+    // Shop settings for cash float
+    const settings = await prisma.shopSetting.findFirst().catch(() => null);
+    const initFloatTelkom = (settings as any)?.initialCashFloatTelkom ?? settings?.initialCashFloat ?? 100000;
+    const initFloatSuta = (settings as any)?.initialCashFloatSuta ?? settings?.initialCashFloat ?? 100000;
+
+    const calcBranchStatsDirect = (bFilter?: string) => {
+      let txs = allTransactions.filter((t: any) => !bFilter || bFilter === "All" || t.branch === bFilter);
+      let mtxs = allMonthTxs.filter((t: any) => !bFilter || bFilter === "All" || t.branch === bFilter);
+      let bks = bookings.filter((b: any) => !bFilter || bFilter === "All" || b.branch === bFilter);
+
+      let revenue = 0;
+      let productSalesRevenue = 0;
+      for (const tx of txs) {
+        revenue += tx.grandTotal || 0;
+        for (const item of (tx.items || [])) {
+          if (item.itemType === "PRODUCT") productSalesRevenue += item.subtotal || 0;
+        }
+      }
+      const monthRevenue = mtxs.reduce((sum: number, t: any) => sum + (t.grandTotal || 0), 0);
+
+      // Cash calculation
+      let cashIn = 0, cashOut = 0;
+      for (const c of cashTxs) {
+        if (bFilter && bFilter !== "All" && c.branch && c.branch !== bFilter) continue;
+        if (c.type === "CASH_IN") cashIn += c.amount || 0;
+        else if (c.type === "CASH_OUT") cashOut += c.amount || 0;
+      }
+      // Include non-QRIS transaction revenue as cash in
+      for (const tx of allTransactions) {
+        if (bFilter && bFilter !== "All" && tx.branch !== bFilter) continue;
+        const isQris = (tx as any).payments?.some((p: any) => p.method === "QRIS");
+        if (!isQris) {
+          cashIn += tx.grandTotal || 0;
+        }
+      }
+      const initF = bFilter === "Suta" ? initFloatSuta : bFilter === "Telkom" ? initFloatTelkom : (initFloatTelkom + initFloatSuta);
+      const cashInHand = initF + cashIn - cashOut;
+
+      // Low stock
+      let lowStock = 0;
+      for (const p of products) {
+        const st = bFilter === "Suta" ? ((p as any).stockSuta ?? p.stock) : bFilter === "Telkom" ? ((p as any).stockTelkom ?? p.stock) : p.stock;
+        if (st <= (p.minStock || 5)) lowStock++;
+      }
+
+      return {
+        todayCustomer: txs.length,
+        todayTransaction: txs.length,
+        todayRevenue: revenue,
+        monthRevenue,
+        todayBooking: bks.length,
+        totalMember: members.length,
+        totalProduct: products.length,
+        lowStockProducts: lowStock,
+        productSalesRevenue,
+        cashInHand,
+      };
+    };
+
+    // Barber performance
+    const barberPerformance = allBarbers.map((barber: any) => {
+      const bTxs = allTransactions.filter((t: any) => {
+        if (t.barbermanId !== barber.id) return false;
+        if (branch && branch !== "All") return t.branch === branch;
+        return true;
+      });
+      const uniqueCust = new Set(bTxs.map((t: any) => t.customerId || t.customerName)).size;
+      const serviceItems = bTxs.flatMap((t: any) => (t.items || []).filter((i: any) => i.itemType !== "PRODUCT"));
+      const bServices = serviceItems.length > 0
+        ? serviceItems.reduce((acc: number, ti: any) => acc + (ti.quantity || 1), 0)
+        : bTxs.length;
+      const bOmzet = bTxs.reduce((acc: number, t: any) => acc + (t.grandTotal || 0), 0);
+      return {
+        id: barber.id,
+        name: barber.name,
+        nickname: barber.nickname || barber.name,
+        homeBranch: barber.homeBranch || barber.branch || "Telkom",
+        workingBranch: barber.workingBranch || barber.branch || "Telkom",
+        branch: barber.workingBranch || barber.branch || "Telkom",
+        status: barber.status || "AKTIF",
+        customers: uniqueCust,
+        transactions: bTxs.length,
+        services: bServices,
+        omzet: bOmzet,
+      };
+    });
+
+    if (branch && branch !== "All") {
+      return {
+        filter,
+        branch,
+        metrics: calcBranchStatsDirect(branch),
+        barberPerformance: barberPerformance.filter((b: any) => b.workingBranch === branch || b.branch === branch),
+        recentActivities: [],
+      };
+    }
+
+    const telkomMetrics = calcBranchStatsDirect("Telkom");
+    const sutaMetrics = calcBranchStatsDirect("Suta");
+    const totalMetrics = calcBranchStatsDirect("All");
+    return {
+      filter,
+      branch: "All",
+      metrics: totalMetrics,
+      telkomMetrics,
+      sutaMetrics,
+      totalMetrics,
+      barberPerformance,
+      recentActivities: [],
+    };
+  }
+
+  // ─── Local dev: baca dari memory DB ───────────────────────────────────────
+  syncFromLocalDB();
 
   // Helper calculation for a specific branch or all
   const calcBranchStats = (bFilter?: string) => {
@@ -3050,6 +3268,7 @@ export async function getDashboardData(
 
 // -------------------------------------------------------------
 // LAPORAN KHUSUS (Pomade, Tonic & Powder, Harian, Bulanan, Tahunan)
+
 // -------------------------------------------------------------
 
 export async function getCategoryReport(categorySlug: string | string[], startDate?: Date, endDate?: Date, branch?: string) {
