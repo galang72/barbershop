@@ -227,42 +227,42 @@
       "categoryId": "cat_pomade",
       "sku": "POM-SMF-01",
       "name": "Smith Fine Shine",
-      "costPrice": 30000,
+      "costPrice": 90000,
       "sellingPrice": 130000,
-      "stock": 3,
-      "minStock": 3,
+      "stock": 4,
+      "stockTelkom": 3,
+      "stockSuta": 1,
+      "minStock": 2,
       "unit": "sachet",
-      "isActive": true,
-      "stockTelkom": 2,
-      "stockSuta": 1
+      "isActive": true
     },
     {
       "id": "prd_smith_prem",
       "categoryId": "cat_pomade",
       "sku": "POM-SMP-02",
       "name": "Smith Premium Medium",
-      "costPrice": 30000,
+      "costPrice": 90000,
       "sellingPrice": 130000,
-      "stock": 1,
-      "minStock": 3,
-      "unit": "sachet",
-      "isActive": true,
+      "stock": 2,
       "stockTelkom": 1,
-      "stockSuta": 0
+      "stockSuta": 1,
+      "minStock": 2,
+      "unit": "sachet",
+      "isActive": true
     },
     {
       "id": "prd_smith_bold",
       "categoryId": "cat_pomade",
       "sku": "POM-SMB-03",
       "name": "Smith Bold Hold",
-      "costPrice": 30000,
+      "costPrice": 90000,
       "sellingPrice": 130000,
-      "stock": 2,
-      "minStock": 3,
+      "stock": 3,
+      "stockTelkom": 2,
+      "stockSuta": 1,
+      "minStock": 2,
       "unit": "sachet",
-      "isActive": true,
-      "stockTelkom": 1,
-      "stockSuta": 1
+      "isActive": true
     },
     {
       "id": "prd_paradox_grand",
@@ -271,12 +271,12 @@
       "name": "Paradox Clay Grandfather",
       "costPrice": 130000,
       "sellingPrice": 160000,
-      "stock": 4,
+      "stock": 5,
+      "stockTelkom": 4,
+      "stockSuta": 1,
       "minStock": 2,
       "unit": "sachet",
-      "isActive": true,
-      "stockTelkom": 2,
-      "stockSuta": 2
+      "isActive": true
     },
     {
       "id": "prd_paradox_quant",
@@ -286,39 +286,39 @@
       "costPrice": 130000,
       "sellingPrice": 160000,
       "stock": 0,
+      "stockTelkom": 0,
+      "stockSuta": 0,
       "minStock": 2,
       "unit": "sachet",
-      "isActive": true,
-      "stockTelkom": 0,
-      "stockSuta": 0
+      "isActive": true
     },
     {
-      "id": "prd_hairmers_clay",
+      "id": "prd_hairneds_clay",
       "categoryId": "cat_pomade",
       "sku": "POM-HMC-06",
-      "name": "Hairmers Clay",
+      "name": "Hairneds Clay",
       "costPrice": 125000,
       "sellingPrice": 160000,
       "stock": 0,
+      "stockTelkom": 0,
+      "stockSuta": 0,
       "minStock": 2,
       "unit": "sachet",
-      "isActive": true,
-      "stockTelkom": 0,
-      "stockSuta": 0
+      "isActive": true
     },
     {
-      "id": "prd_hairmers_pwd",
+      "id": "prd_hairneds_pwd",
       "categoryId": "cat_powder",
       "sku": "PWD-HMP-07",
-      "name": "Hairmers Powder",
+      "name": "Hairneds Powder",
       "costPrice": 65000,
       "sellingPrice": 100000,
       "stock": 0,
+      "stockTelkom": 0,
+      "stockSuta": 0,
       "minStock": 2,
       "unit": "sachet",
-      "isActive": true,
-      "stockTelkom": 0,
-      "stockSuta": 0
+      "isActive": true
     },
     {
       "id": "prd_smith_ocean",
@@ -328,11 +328,11 @@
       "costPrice": 65000,
       "sellingPrice": 100000,
       "stock": 0,
+      "stockTelkom": 0,
+      "stockSuta": 0,
       "minStock": 2,
       "unit": "sachet",
-      "isActive": true,
-      "stockTelkom": 0,
-      "stockSuta": 0
+      "isActive": true
     },
     {
       "id": "prd_powder_paradox",
@@ -342,11 +342,11 @@
       "costPrice": 65000,
       "sellingPrice": 100000,
       "stock": 0,
+      "stockTelkom": 0,
+      "stockSuta": 0,
       "minStock": 2,
       "unit": "sachet",
-      "isActive": true,
-      "stockTelkom": 0,
-      "stockSuta": 0
+      "isActive": true
     },
     {
       "id": "prd_nobad_pwd",
@@ -354,41 +354,41 @@
       "sku": "PWD-NBH-10",
       "name": "No Bad Hair Powder",
       "costPrice": 110000,
-      "sellingPrice": 195000,
+      "sellingPrice": 135000,
       "stock": 0,
+      "stockTelkom": 0,
+      "stockSuta": 0,
       "minStock": 2,
       "unit": "sachet",
-      "isActive": true,
-      "stockTelkom": 0,
-      "stockSuta": 0
+      "isActive": true
     },
     {
-      "id": "prd_hairmers_paste",
+      "id": "prd_hairnerds_paste",
       "categoryId": "cat_pomade",
       "sku": "POM-HMP-11",
-      "name": "Hairmers Paste Kecil",
+      "name": "Hairnerds Paste Kecil",
       "costPrice": 65000,
       "sellingPrice": 100000,
       "stock": 0,
+      "stockTelkom": 0,
+      "stockSuta": 0,
       "minStock": 2,
       "unit": "sachet",
-      "isActive": true,
-      "stockTelkom": 0,
-      "stockSuta": 0
+      "isActive": true
     },
     {
-      "id": "prd_hairmers_pro",
+      "id": "prd_hairnerds_pro",
       "categoryId": "cat_pomade",
       "sku": "POM-HPW-12",
-      "name": "Hairmers Pro Water Based Kecil",
+      "name": "Hairnerds Pro Water Based Kecil",
       "costPrice": 55000,
       "sellingPrice": 100000,
       "stock": 0,
+      "stockTelkom": 0,
+      "stockSuta": 0,
       "minStock": 2,
       "unit": "sachet",
-      "isActive": true,
-      "stockTelkom": 0,
-      "stockSuta": 0
+      "isActive": true
     },
     {
       "id": "prd_dream_oil_heavy",
@@ -398,11 +398,11 @@
       "costPrice": 70000,
       "sellingPrice": 110000,
       "stock": 0,
+      "stockTelkom": 0,
+      "stockSuta": 0,
       "minStock": 2,
       "unit": "sachet",
-      "isActive": true,
-      "stockTelkom": 0,
-      "stockSuta": 0
+      "isActive": true
     },
     {
       "id": "prd_dream_oil_light",
@@ -411,12 +411,12 @@
       "name": "Dream Pomade Oil Based Light Hold",
       "costPrice": 80000,
       "sellingPrice": 120000,
-      "stock": 3,
+      "stock": 4,
+      "stockTelkom": 3,
+      "stockSuta": 1,
       "minStock": 2,
       "unit": "sachet",
-      "isActive": true,
-      "stockTelkom": 2,
-      "stockSuta": 1
+      "isActive": true
     },
     {
       "id": "prd_dream_wb_strong",
@@ -425,12 +425,12 @@
       "name": "Dream Pomade WB Strong Hold",
       "costPrice": 80000,
       "sellingPrice": 120000,
-      "stock": 2,
+      "stock": 3,
+      "stockTelkom": 2,
+      "stockSuta": 1,
       "minStock": 2,
       "unit": "sachet",
-      "isActive": true,
-      "stockTelkom": 1,
-      "stockSuta": 1
+      "isActive": true
     },
     {
       "id": "prd_dream_wb_hyper",
@@ -439,12 +439,12 @@
       "name": "Dream Pomade WB Hyper Strong",
       "costPrice": 80000,
       "sellingPrice": 120000,
-      "stock": 0,
+      "stock": 3,
+      "stockTelkom": 2,
+      "stockSuta": 1,
       "minStock": 2,
       "unit": "sachet",
-      "isActive": true,
-      "stockTelkom": 0,
-      "stockSuta": 0
+      "isActive": true
     },
     {
       "id": "prd_puppet_wb",
@@ -454,11 +454,11 @@
       "costPrice": 85000,
       "sellingPrice": 130000,
       "stock": 0,
+      "stockTelkom": 0,
+      "stockSuta": 0,
       "minStock": 2,
       "unit": "sachet",
-      "isActive": true,
-      "stockTelkom": 0,
-      "stockSuta": 0
+      "isActive": true
     },
     {
       "id": "prd_puppet_clay",
@@ -468,11 +468,11 @@
       "costPrice": 100000,
       "sellingPrice": 130000,
       "stock": 0,
+      "stockTelkom": 0,
+      "stockSuta": 0,
       "minStock": 2,
       "unit": "sachet",
-      "isActive": true,
-      "stockTelkom": 0,
-      "stockSuta": 0
+      "isActive": true
     },
     {
       "id": "prd_freestyle_dust",
@@ -481,12 +481,12 @@
       "name": "Powder Free Style Dust",
       "costPrice": 75000,
       "sellingPrice": 110000,
-      "stock": 3,
-      "minStock": 3,
+      "stock": 4,
+      "stockTelkom": 3,
+      "stockSuta": 1,
+      "minStock": 2,
       "unit": "sachet",
-      "isActive": true,
-      "stockTelkom": 2,
-      "stockSuta": 1
+      "isActive": true
     },
     {
       "id": "prd_hairpro_dot",
@@ -495,12 +495,12 @@
       "name": "Hairpro Dot Clay",
       "costPrice": 75000,
       "sellingPrice": 110000,
-      "stock": 1,
+      "stock": 2,
+      "stockTelkom": 1,
+      "stockSuta": 1,
       "minStock": 2,
       "unit": "sachet",
-      "isActive": true,
-      "stockTelkom": 1,
-      "stockSuta": 0
+      "isActive": true
     },
     {
       "id": "prd_hair_paste_new",
@@ -509,12 +509,12 @@
       "name": "Hair Paste New",
       "costPrice": 75000,
       "sellingPrice": 110000,
-      "stock": 1,
+      "stock": 2,
+      "stockTelkom": 1,
+      "stockSuta": 1,
       "minStock": 2,
       "unit": "sachet",
-      "isActive": true,
-      "stockTelkom": 1,
-      "stockSuta": 0
+      "isActive": true
     },
     {
       "id": "prd_hairpro_wb_new",
@@ -523,12 +523,12 @@
       "name": "Hairpro Water Based New",
       "costPrice": 75000,
       "sellingPrice": 110000,
-      "stock": 2,
+      "stock": 3,
+      "stockTelkom": 2,
+      "stockSuta": 1,
       "minStock": 2,
       "unit": "sachet",
-      "isActive": true,
-      "stockTelkom": 1,
-      "stockSuta": 1
+      "isActive": true
     },
     {
       "id": "prd_puppet_murph",
@@ -538,11 +538,11 @@
       "costPrice": 75000,
       "sellingPrice": 100000,
       "stock": 0,
+      "stockTelkom": 0,
+      "stockSuta": 0,
       "minStock": 2,
       "unit": "sachet",
-      "isActive": true,
-      "stockTelkom": 0,
-      "stockSuta": 0
+      "isActive": true
     }
   ],
   "stockMovements": [],

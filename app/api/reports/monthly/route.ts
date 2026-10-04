@@ -19,9 +19,7 @@ export async function GET(req: NextRequest) {
     const data = await getMonthlyReport(year, month, branch);
     return NextResponse.json(data, {
       headers: {
-        "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
-        "Pragma": "no-cache",
-        "Expires": "0",
+        "Cache-Control": "public, s-maxage=10, stale-while-revalidate=30",
       },
     });
   } catch (err: any) {

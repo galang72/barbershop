@@ -22,10 +22,13 @@ import { Modal } from "@/components/ui/modal";
 import { formatRupiah } from "@/lib/utils";
 import { exportToExcel, exportToCSV } from "@/lib/export";
 
+// ⚡ Module-level SWR cache — persists across navigations within the same session
+let _produkClientCache: { products: any[]; categories: any[] } | null = null;
+
 export default function ProdukPage() {
-  const [products, setProducts] = useState<any[]>([]);
-  const [categories, setCategories] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [products, setProducts] = useState<any[]>(_produkClientCache?.products || []);
+  const [categories, setCategories] = useState<any[]>(_produkClientCache?.categories || []);
+  const [loading, setLoading] = useState(!_produkClientCache);
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("ALL");
 
@@ -52,15 +55,19 @@ export default function ProdukPage() {
   const [adjustNotes, setAdjustNotes] = useState("");
   const [submittingStock, setSubmittingStock] = useState(false);
 
-  const fetchProducts = async () => {
-    setLoading(true);
+  const fetchProducts = async (showLoadingSpinner = false) => {
+    if (showLoadingSpinner) setLoading(true);
     try {
       const res = await fetch("/api/products?includeCategories=true");
       const json = await res.json();
-      setProducts(json.products || []);
-      setCategories(json.categories || []);
-      if (json.categories?.length > 0 && !categoryId) {
-        setCategoryId(json.categories[0].id);
+      const prods = json.products || [];
+      const cats = json.categories || [];
+      setProducts(prods);
+      setCategories(cats);
+      // Update module-level cache
+      _produkClientCache = { products: prods, categories: cats };
+      if (cats.length > 0 && !categoryId) {
+        setCategoryId(cats[0].id);
       }
     } catch (e) {
       console.error(e);
@@ -70,7 +77,12 @@ export default function ProdukPage() {
   };
 
   useEffect(() => {
-    fetchProducts();
+    // If we have cache, show it immediately and refresh in background
+    if (_produkClientCache) {
+      fetchProducts(false);
+    } else {
+      fetchProducts(true);
+    }
   }, []);
 
   const openAddModal = () => {

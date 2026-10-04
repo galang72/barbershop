@@ -22,6 +22,8 @@ import {
   Instagram,
   RefreshCw,
   Sparkles,
+  Calendar,
+  Clock,
 } from "lucide-react";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -77,6 +79,11 @@ export default function KasirPage() {
   const [paymentMethod, setPaymentMethod] = useState<string>("CASH");
   const [amountPaid, setAmountPaid] = useState<number>(0);
   const [notes, setNotes] = useState("");
+
+  // Booking Integration State
+  const [activeBookings, setActiveBookings] = useState<any[]>([]);
+  const [selectedBooking, setSelectedBooking] = useState<any>(null);
+  const [bookingModalOpen, setBookingModalOpen] = useState(false);
 
   // Checkout Status & Receipt Modal
   const [submitting, setSubmitting] = useState(false);
@@ -137,9 +144,60 @@ export default function KasirPage() {
       setServices(newServices);
       setProducts(newProducts);
       setCategories(newCategories);
+      setActiveBookings(Array.isArray(data.activeBookings) ? data.activeBookings : []);
     } catch (err) {
       console.error("Failed to load cashier data", err);
     }
+  };
+
+  const handleSelectBooking = (bk: any) => {
+    setSelectedBooking(bk);
+
+    // 1. Set Customer data
+    if (bk.customer) {
+      setSelectedCustomer(bk.customer);
+    } else {
+      setSelectedCustomer({
+        id: bk.customerId || `cst_${Date.now()}`,
+        name: bk.customerName,
+        phone: bk.customerPhone || null,
+        instagram: null,
+      });
+      setNewCustomerName(bk.customerName);
+      setNewCustomerPhone(bk.customerPhone || "");
+    }
+
+    // 2. Set Barberman
+    if (bk.barbermanId) {
+      setSelectedBarbermanId(bk.barbermanId);
+    }
+
+    // 3. Add Service to cart
+    if (bk.service) {
+      const s = bk.service;
+      setCart((prev) => {
+        const exists = prev.find((item) => item.serviceId === s.id);
+        if (exists) return prev;
+        return [
+          ...prev,
+          {
+            itemType: "SERVICE",
+            serviceId: s.id,
+            name: s.name,
+            price: Number(s.price),
+            quantity: 1,
+            subtotal: Number(s.price),
+          },
+        ];
+      });
+    }
+
+    // 4. Auto-deduct DP Rp 20.000
+    setDiscountType("nominal");
+    setDiscountValue(20000);
+    setNotes(`Melanjutkan Booking: ${bk.customerName} (${bk.bookingTime || "Hari ini"}), DP Rp 20.000 sudah terbayar.`);
+
+    setBookingModalOpen(false);
   };
 
   useEffect(() => {
@@ -356,6 +414,8 @@ export default function KasirPage() {
         amountPaid: paymentMethod === "CASH" ? amountPaid : grandTotal,
         changeAmount,
         notes,
+        bookingId: selectedBooking?.id || null,
+        dpAmount: selectedBooking ? 20000 : 0,
       };
 
       const res = await fetch("/api/kasir/checkout", {
@@ -374,6 +434,7 @@ export default function KasirPage() {
 
       setCart([]);
       setSelectedCustomer(null);
+      setSelectedBooking(null);
       setNewCustomerName("");
       setNewCustomerPhone("");
       setNewCustomerInstagram("");
@@ -476,6 +537,59 @@ export default function KasirPage() {
         </div>
       </div>
 
+      {/* BOOKING INTEGRATION BANNER */}
+      {activeBookings.length > 0 && (
+        <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-2xl p-3 px-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center font-black text-sm shadow-md shadow-amber-500/20">
+              <Calendar className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="text-xs font-bold text-slate-900 flex items-center gap-2">
+                <span>Antrean Booking Hari Ini ({activeBookings.length})</span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] bg-amber-200/80 text-amber-900 font-extrabold">
+                  DP Rp 20.000 Terbayar
+                </span>
+                {selectedBooking && (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-100 text-emerald-800 font-extrabold flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3" /> Booking Terpilih: {selectedBooking.customerName}
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-600 mt-0.5">
+                {selectedBooking ? (
+                  <span>Layanan booking <strong>{selectedBooking.service?.name || "Layanan"}</strong> dengan <strong>{selectedBooking.barberman?.name || "Barber"}</strong> jam <strong>{selectedBooking.bookingTime}</strong> otomatis dimasukkan & DP Rp20.000 dipotong.</span>
+                ) : (
+                  "Customer booking telah membayar DP Rp20.000. Klik tombol untuk memproses transaksi kasirnya."
+                )}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {selectedBooking && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedBooking(null);
+                  setDiscountValue(0);
+                  setNotes("");
+                }}
+                className="px-3 py-1.5 rounded-xl border border-slate-300 text-slate-700 bg-white text-xs font-bold hover:bg-slate-50 transition"
+              >
+                Batalkan Pilihan
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setBookingModalOpen(true)}
+              className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md shadow-amber-600/20 flex items-center gap-1.5 transition cursor-pointer"
+            >
+              <span>{selectedBooking ? "Ganti Bookingan" : "Pilih Bookingan Kasir"}</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* MAIN LAYOUT: LEFT CATALOG (60%), RIGHT CART & BILLING (40%) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
@@ -1122,6 +1236,76 @@ export default function KasirPage() {
               className="w-full mt-2 font-bold shadow-md shadow-blue-500/25"
             >
               + Simpan Customer untuk Transaksi
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* MODAL PILIH BOOKING HARI INI */}
+      <Modal
+        isOpen={bookingModalOpen}
+        onClose={() => setBookingModalOpen(false)}
+        title="Daftar Booking / Reservasi Hari Ini"
+        maxWidth="max-w-2xl"
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-slate-600 leading-relaxed">
+            Pilih bookingan customer untuk melanjutkan ke kasir. Sistem akan otomatis mengisi nama customer, barberman yang dipilih, layanan potong rambut, dan memotong <strong>DP Rp 20.000</strong> yang sudah dibayar dari total tagihan akhir.
+          </p>
+
+          {activeBookings.length === 0 ? (
+            <div className="p-8 text-center text-slate-400 bg-slate-50 rounded-2xl border border-slate-200">
+              <Calendar className="w-8 h-8 mx-auto text-slate-300 mb-2" />
+              <p className="text-xs font-bold text-slate-600">Tidak ada antrean booking aktif hari ini</p>
+            </div>
+          ) : (
+            <div className="space-y-2.5 max-h-[420px] overflow-y-auto pr-1">
+              {activeBookings.map((bk) => (
+                <div
+                  key={bk.id}
+                  className="p-3.5 rounded-2xl border border-slate-200 bg-white hover:border-amber-400 hover:bg-amber-50/40 transition flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm"
+                >
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-extrabold text-sm text-slate-900">{bk.customerName}</span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">
+                        Jam {bk.bookingTime}
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                        DP Rp 20.000 Lunas
+                      </span>
+                    </div>
+                    <div className="text-xs text-slate-600 flex flex-wrap items-center gap-3">
+                      <span>💈 Barber: <strong>{bk.barberman?.name || "-"}</strong></span>
+                      <span>✂️ Layanan: <strong>{bk.service?.name || "-"}</strong></span>
+                      {bk.customerPhone && <span>📞 {bk.customerPhone}</span>}
+                    </div>
+                    {bk.notes && (
+                      <p className="text-[11px] text-slate-400 italic">Catatan: {bk.notes}</p>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => handleSelectBooking(bk)}
+                    className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-md shadow-blue-600/20 flex items-center justify-center gap-1.5 shrink-0 transition cursor-pointer"
+                  >
+                    <span>Lanjutkan ke Kasir</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="pt-3 border-t border-slate-100 flex justify-end">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => setBookingModalOpen(false)}
+            >
+              Tutup
             </Button>
           </div>
         </div>

@@ -27,10 +27,13 @@ import { Modal } from "@/components/ui/modal";
 import { formatDateIndo, formatRupiah } from "@/lib/utils";
 import { exportToExcel, exportToCSV } from "@/lib/export";
 
+// Client-side cache for instant display
+let _transferClientCache: { transfers: any[]; products: any[] } | null = null;
+
 export default function TransferPage() {
-  const [transfers, setTransfers] = useState<any[]>([]);
-  const [products, setProducts] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [transfers, setTransfers] = useState<any[]>(_transferClientCache?.transfers || []);
+  const [products, setProducts] = useState<any[]>(_transferClientCache?.products || []);
+  const [loading, setLoading] = useState(!_transferClientCache);
   const [search, setSearch] = useState("");
   const [routeFilter, setRouteFilter] = useState("ALL");
   const [user, setUser] = useState<any>(null);
@@ -50,14 +53,17 @@ export default function TransferPage() {
   const [selectedTransfer, setSelectedTransfer] = useState<any>(null);
 
   const fetchTransfers = async () => {
-    setLoading(true);
+    if (!_transferClientCache) setLoading(true);
     try {
       const res = await fetch("/api/products/transfer");
       const json = await res.json();
-      setTransfers(json.transfers || []);
-      setProducts(json.products || []);
-      if (json.products?.length > 0 && !selectedProductId) {
-        setSelectedProductId(json.products[0].id);
+      const trfs = json.transfers || [];
+      const prods = json.products || [];
+      _transferClientCache = { transfers: trfs, products: prods };
+      setTransfers(trfs);
+      setProducts(prods);
+      if (prods.length > 0 && !selectedProductId) {
+        setSelectedProductId(prods[0].id);
       }
     } catch (e) {
       console.error(e);

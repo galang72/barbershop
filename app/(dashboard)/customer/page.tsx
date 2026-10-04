@@ -20,9 +20,12 @@ import { Modal } from "@/components/ui/modal";
 import { formatRupiah, formatDateIndo, formatDateTimeIndo } from "@/lib/utils";
 import { exportToExcel, exportToCSV } from "@/lib/export";
 
+// Client-side module cache for instant display
+let _customerClientCache: any[] | null = null;
+
 export default function CustomerPage() {
-  const [customers, setCustomers] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [customers, setCustomers] = useState<any[]>(_customerClientCache || []);
+  const [loading, setLoading] = useState(!_customerClientCache);
   const [search, setSearch] = useState("");
 
   // Customer Detail Modal
@@ -50,14 +53,16 @@ export default function CustomerPage() {
   const [updatingCustomer, setUpdatingCustomer] = useState(false);
 
   const fetchCustomers = async (q?: string) => {
-    setLoading(true);
+    if (!_customerClientCache && !q) setLoading(true);
     try {
       const url = q
         ? `/api/customers?q=${encodeURIComponent(q)}&_t=${Date.now()}`
         : `/api/customers?_t=${Date.now()}`;
       const res = await fetch(url, { cache: "no-store" });
       const json = await res.json();
-      setCustomers(Array.isArray(json) ? json : []);
+      const list = Array.isArray(json) ? json : [];
+      if (!q) _customerClientCache = list;
+      setCustomers(list);
     } catch (err) {
       console.error(err);
     } finally {
@@ -263,7 +268,7 @@ export default function CustomerPage() {
                 <th className="py-3.5 px-4">Kontak / Media</th>
                 <th className="py-3.5 px-4 text-center">Kunjungan</th>
                 <th className="py-3.5 px-4 text-right">Total Belanja</th>
-                <th className="py-3.5 px-4">Barberman Favorit</th>
+                <th className="py-3.5 px-4">Barberman</th>
                 <th className="py-3.5 px-4 text-center">Kunjungan Terakhir</th>
                 <th className="py-3.5 px-4 text-center">Aksi</th>
               </tr>
@@ -325,7 +330,7 @@ export default function CustomerPage() {
                       {formatRupiah(c.totalSpend)}
                     </td>
                     <td className="py-3.5 px-4 text-xs font-semibold">
-                      {c.favoriteBarberman ? (
+                      {c.favoriteBarberman?.name ? (
                         <span className="px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 border border-blue-200 font-medium inline-flex items-center gap-1">
                           💈 {c.favoriteBarberman.name}
                         </span>

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getBarbermen, getServices, getProducts, getProductCategories } from "@/lib/db";
+import { getBarbermen, getServices, getProducts, getProductCategories, getBookings } from "@/lib/db";
 import { getAdminSession } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -10,17 +10,23 @@ export async function GET(req: NextRequest) {
     const session = await getAdminSession();
     const branch = session?.branch && session.branch !== "All" ? session.branch : undefined;
 
-    const [barbermen, services, productsRaw, categories, settings] = await Promise.all([
+    const todayStr = new Date().toISOString().split("T")[0];
+    const [barbermen, services, productsRaw, categories, settings, allBookings] = await Promise.all([
       getBarbermen(false, branch),
       getServices(false),
       getProducts(),
       getProductCategories(),
       prisma.shopSetting.findFirst().catch(() => null),
+      getBookings(todayStr, branch).catch(() => []),
     ]);
 
     const products = Array.isArray(productsRaw)
       ? productsRaw
       : (productsRaw as any)?.products || [];
+
+    const activeBookings = (allBookings || []).filter(
+      (b: any) => b.status !== "COMPLETED" && b.status !== "CANCELLED"
+    );
 
     return NextResponse.json(
       {
@@ -30,6 +36,7 @@ export async function GET(req: NextRequest) {
         categories,
         shopSettings: settings,
         user: session,
+        activeBookings,
       },
       {
         headers: {

@@ -39,22 +39,24 @@ export default function DashboardPage() {
   const { user } = useUser();
 
   const cacheKey = `${filter}:${user?.role || ""}:${user?.branch || ""}`;
-  const [data, setData] = useState<any>(_dashboardClientCache[cacheKey] || null);
-  const [loading, setLoading] = useState(!_dashboardClientCache[cacheKey]);
+  const cached = _dashboardClientCache[cacheKey] || _dashboardClientCache[filter] || null;
+  const [data, setData] = useState<any>(cached);
+  const [loading, setLoading] = useState(!cached);
 
   const fetchDashboard = async () => {
-    // Only show loading spinner if we don't have cached data yet
-    if (!_dashboardClientCache[cacheKey]) {
+    const hasData = _dashboardClientCache[cacheKey] || _dashboardClientCache[filter];
+    if (!hasData) {
       setLoading(true);
     }
     try {
-      let url = `/api/dashboard?filter=${filter}&_t=${Date.now()}`;
+      let url = `/api/dashboard?filter=${filter}`;
       if (filter === "custom" && customStart && customEnd) {
         url += `&start=${customStart}&end=${customEnd}`;
       }
       const res = await fetch(url);
       const json = await res.json();
       _dashboardClientCache[cacheKey] = json;
+      _dashboardClientCache[filter] = json;
       setData(json);
     } catch (err) {
       console.error("Failed to load dashboard data", err);
@@ -64,11 +66,13 @@ export default function DashboardPage() {
   };
 
   useEffect(() => {
-    if (_dashboardClientCache[cacheKey]) {
-      setData(_dashboardClientCache[cacheKey]);
+    const existing = _dashboardClientCache[cacheKey] || _dashboardClientCache[filter];
+    if (existing) {
+      setData(existing);
+      setLoading(false);
     }
     fetchDashboard();
-  }, [filter, cacheKey]);
+  }, [filter, user?.branch, user?.role]);
 
   const handleApplyCustom = (e: React.FormEvent) => {
     e.preventDefault();

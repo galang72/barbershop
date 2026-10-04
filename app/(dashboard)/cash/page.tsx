@@ -52,7 +52,7 @@ export default function CashManagementPage() {
   const fetchCash = async () => {
     if (!_cashClientCache) setLoading(true);
     try {
-      const res = await fetch(`/api/cash?_t=${Date.now()}`, { cache: "no-store" });
+      const res = await fetch("/api/cash");
       const json = await res.json();
       _cashClientCache = json;
       setCashData(json);

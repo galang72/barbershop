@@ -339,6 +339,35 @@ export async function seedDemoTransactionsToSupabase(): Promise<{ count: number 
 
 async function _doEnsureSchema(): Promise<void> {
   try {
+    // 🔄 Always run these migrations (idempotent via IF NOT EXISTS / ADD COLUMN IF NOT EXISTS)
+    // This ensures new columns/tables are created even on subsequent cold starts
+    try {
+      await prisma.$executeRawUnsafe(`ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "stock_telkom" INTEGER NOT NULL DEFAULT 0`);
+      await prisma.$executeRawUnsafe(`ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "stock_suta" INTEGER NOT NULL DEFAULT 0`);
+    } catch {}
+    try {
+      await prisma.$executeRawUnsafe(`
+        CREATE TABLE IF NOT EXISTS "product_transfers" (
+          "id" TEXT NOT NULL PRIMARY KEY,
+          "transfer_number" TEXT NOT NULL UNIQUE,
+          "product_id" TEXT NOT NULL,
+          "product_name" TEXT NOT NULL,
+          "product_sku" TEXT NOT NULL DEFAULT '',
+          "category_name" TEXT NOT NULL DEFAULT 'Produk',
+          "from_branch" TEXT NOT NULL,
+          "to_branch" TEXT NOT NULL,
+          "quantity" INTEGER NOT NULL,
+          "unit" TEXT NOT NULL DEFAULT 'pcs',
+          "notes" TEXT,
+          "created_by" TEXT NOT NULL DEFAULT 'Admin',
+          "status" TEXT NOT NULL DEFAULT 'COMPLETED',
+          "stock_telkom_after" INTEGER NOT NULL DEFAULT 0,
+          "stock_suta_after" INTEGER NOT NULL DEFAULT 0,
+          "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+    } catch {}
+
     // 🔑 Check DB flag first — already done by a previous Lambda instance?
     // We use shop_settings.receiptFooter as a version marker (no schema changes needed)
     // Actually: check a fast way — if users table has admin rows, schema is already set up.
@@ -441,37 +470,47 @@ async function _doEnsureSchema(): Promise<void> {
       }
     }
 
-    // 6. Products — hanya jika kosong
-    const productCount = await prisma.product.count().catch(() => 0);
-    if (productCount === 0) {
-      const prods = [
-        { id: "prd_smith_fine",      categoryId: "cat_pomade", sku: "POM-SMF-01", name: "Smith Fine Shine",                   costPrice: 30000,  sellingPrice: 130000, stock: 3, minStock: 3, unit: "sachet", isActive: true },
-        { id: "prd_smith_prem",      categoryId: "cat_pomade", sku: "POM-SMP-02", name: "Smith Premium Medium",               costPrice: 30000,  sellingPrice: 130000, stock: 1, minStock: 3, unit: "sachet", isActive: true },
-        { id: "prd_smith_bold",      categoryId: "cat_pomade", sku: "POM-SMB-03", name: "Smith Bold Hold",                    costPrice: 30000,  sellingPrice: 130000, stock: 2, minStock: 3, unit: "sachet", isActive: true },
-        { id: "prd_paradox_grand",   categoryId: "cat_pomade", sku: "POM-PDG-04", name: "Paradox Clay Grandfather",           costPrice: 130000, sellingPrice: 160000, stock: 4, minStock: 2, unit: "sachet", isActive: true },
-        { id: "prd_paradox_quant",   categoryId: "cat_pomade", sku: "POM-PDQ-05", name: "Paradox Clay Quantum",               costPrice: 130000, sellingPrice: 160000, stock: 0, minStock: 2, unit: "sachet", isActive: true },
-        { id: "prd_hairmers_clay",   categoryId: "cat_pomade", sku: "POM-HMC-06", name: "Hairmers Clay",                     costPrice: 125000, sellingPrice: 160000, stock: 0, minStock: 2, unit: "sachet", isActive: true },
-        { id: "prd_hairmers_pwd",    categoryId: "cat_powder", sku: "PWD-HMP-07", name: "Hairmers Powder",                   costPrice: 65000,  sellingPrice: 100000, stock: 0, minStock: 2, unit: "sachet", isActive: true },
-        { id: "prd_smith_ocean",     categoryId: "cat_powder", sku: "PWD-SMO-08", name: "Smith Ocean Dust Powder",            costPrice: 65000,  sellingPrice: 100000, stock: 0, minStock: 2, unit: "sachet", isActive: true },
-        { id: "prd_powder_paradox",  categoryId: "cat_powder", sku: "PWD-PPX-09", name: "Powder Paradox",                    costPrice: 65000,  sellingPrice: 100000, stock: 0, minStock: 2, unit: "sachet", isActive: true },
-        { id: "prd_nobad_pwd",       categoryId: "cat_powder", sku: "PWD-NBH-10", name: "No Bad Hair Powder",                costPrice: 110000, sellingPrice: 195000, stock: 0, minStock: 2, unit: "sachet", isActive: true },
-        { id: "prd_hairmers_paste",  categoryId: "cat_pomade", sku: "POM-HMP-11", name: "Hairmers Paste Kecil",              costPrice: 65000,  sellingPrice: 100000, stock: 0, minStock: 2, unit: "sachet", isActive: true },
-        { id: "prd_hairmers_pro",    categoryId: "cat_pomade", sku: "POM-HPW-12", name: "Hairmers Pro Water Based Kecil",    costPrice: 55000,  sellingPrice: 100000, stock: 0, minStock: 2, unit: "sachet", isActive: true },
-        { id: "prd_dream_oil_heavy", categoryId: "cat_pomade", sku: "POM-DOH-13", name: "Dream Pomade Oil Based Heavy Hold", costPrice: 70000,  sellingPrice: 110000, stock: 0, minStock: 2, unit: "sachet", isActive: true },
-        { id: "prd_dream_oil_light", categoryId: "cat_pomade", sku: "POM-DOL-14", name: "Dream Pomade Oil Based Light Hold", costPrice: 80000,  sellingPrice: 120000, stock: 3, minStock: 2, unit: "sachet", isActive: true },
-        { id: "prd_dream_wb_strong", categoryId: "cat_pomade", sku: "POM-DWS-15", name: "Dream Pomade WB Strong Hold",       costPrice: 80000,  sellingPrice: 120000, stock: 2, minStock: 2, unit: "sachet", isActive: true },
-        { id: "prd_dream_wb_hyper",  categoryId: "cat_pomade", sku: "POM-DWH-16", name: "Dream Pomade WB Hyper Strong",      costPrice: 80000,  sellingPrice: 120000, stock: 0, minStock: 2, unit: "sachet", isActive: true },
-        { id: "prd_puppet_wb",       categoryId: "cat_pomade", sku: "POM-PPW-17", name: "Puppet Pomade Waterbased",          costPrice: 85000,  sellingPrice: 130000, stock: 0, minStock: 2, unit: "sachet", isActive: true },
-        { id: "prd_puppet_clay",     categoryId: "cat_pomade", sku: "POM-PPC-18", name: "Puppet Clay",                      costPrice: 100000, sellingPrice: 130000, stock: 0, minStock: 2, unit: "sachet", isActive: true },
-        { id: "prd_freestyle_dust",  categoryId: "cat_powder", sku: "PWD-FSD-19", name: "Powder Free Style Dust",            costPrice: 75000,  sellingPrice: 110000, stock: 3, minStock: 3, unit: "sachet", isActive: true },
-        { id: "prd_hairpro_dot",     categoryId: "cat_pomade", sku: "POM-HPD-20", name: "Hairpro Dot Clay",                  costPrice: 75000,  sellingPrice: 110000, stock: 1, minStock: 2, unit: "sachet", isActive: true },
-        { id: "prd_hair_paste_new",  categoryId: "cat_pomade", sku: "POM-HPN-21", name: "Hair Paste New",                    costPrice: 75000,  sellingPrice: 110000, stock: 1, minStock: 2, unit: "sachet", isActive: true },
-        { id: "prd_hairpro_wb_new",  categoryId: "cat_pomade", sku: "POM-HWN-22", name: "Hairpro Water Based New",           costPrice: 75000,  sellingPrice: 110000, stock: 2, minStock: 2, unit: "sachet", isActive: true },
-        { id: "prd_puppet_murph",    categoryId: "cat_powder", sku: "PWD-PPM-23", name: "Powder Puppet Murpheus",            costPrice: 75000,  sellingPrice: 100000, stock: 0, minStock: 2, unit: "sachet", isActive: true },
-      ];
-      for (const p of prods) {
-        try { await prisma.product.create({ data: p }); } catch {}
-      }
+    // 6. Products — Selalu sinkronkan katalog 23 produk AD Barbershop
+    const prods = [
+      { id: "prd_smith_fine",      categoryId: "cat_pomade", sku: "POM-SMF-01", name: "Smith Fine Shine",                   costPrice: 90000,  sellingPrice: 130000, stock: 4, minStock: 2, unit: "sachet", isActive: true },
+      { id: "prd_smith_prem",      categoryId: "cat_pomade", sku: "POM-SMP-02", name: "Smith Premium Medium",               costPrice: 90000,  sellingPrice: 130000, stock: 2, minStock: 2, unit: "sachet", isActive: true },
+      { id: "prd_smith_bold",      categoryId: "cat_pomade", sku: "POM-SMB-03", name: "Smith Bold Hold",                    costPrice: 90000,  sellingPrice: 130000, stock: 3, minStock: 2, unit: "sachet", isActive: true },
+      { id: "prd_paradox_grand",   categoryId: "cat_pomade", sku: "POM-PDG-04", name: "Paradox Clay Grandfather",           costPrice: 130000, sellingPrice: 160000, stock: 5, minStock: 2, unit: "sachet", isActive: true },
+      { id: "prd_paradox_quant",   categoryId: "cat_pomade", sku: "POM-PDQ-05", name: "Paradox Clay Quantum",               costPrice: 130000, sellingPrice: 160000, stock: 0, minStock: 2, unit: "sachet", isActive: true },
+      { id: "prd_hairneds_clay",   categoryId: "cat_pomade", sku: "POM-HMC-06", name: "Hairneds Clay",                     costPrice: 125000, sellingPrice: 160000, stock: 0, minStock: 2, unit: "sachet", isActive: true },
+      { id: "prd_hairneds_pwd",    categoryId: "cat_powder", sku: "PWD-HMP-07", name: "Hairneds Powder",                   costPrice: 65000,  sellingPrice: 100000, stock: 0, minStock: 2, unit: "sachet", isActive: true },
+      { id: "prd_smith_ocean",     categoryId: "cat_powder", sku: "PWD-SMO-08", name: "Smith Ocean Dust Powder",            costPrice: 65000,  sellingPrice: 100000, stock: 0, minStock: 2, unit: "sachet", isActive: true },
+      { id: "prd_powder_paradox",  categoryId: "cat_powder", sku: "PWD-PPX-09", name: "Powder Paradox",                    costPrice: 65000,  sellingPrice: 100000, stock: 0, minStock: 2, unit: "sachet", isActive: true },
+      { id: "prd_nobad_pwd",       categoryId: "cat_powder", sku: "PWD-NBH-10", name: "No Bad Hair Powder",                costPrice: 110000, sellingPrice: 135000, stock: 0, minStock: 2, unit: "sachet", isActive: true },
+      { id: "prd_hairnerds_paste", categoryId: "cat_pomade", sku: "POM-HMP-11", name: "Hairnerds Paste Kecil",              costPrice: 65000,  sellingPrice: 100000, stock: 0, minStock: 2, unit: "sachet", isActive: true },
+      { id: "prd_hairnerds_pro",   categoryId: "cat_pomade", sku: "POM-HPW-12", name: "Hairnerds Pro Water Based Kecil",    costPrice: 55000,  sellingPrice: 100000, stock: 0, minStock: 2, unit: "sachet", isActive: true },
+      { id: "prd_dream_oil_heavy", categoryId: "cat_pomade", sku: "POM-DOH-13", name: "Dream Pomade Oil Based Heavy Hold", costPrice: 70000,  sellingPrice: 110000, stock: 0, minStock: 2, unit: "sachet", isActive: true },
+      { id: "prd_dream_oil_light", categoryId: "cat_pomade", sku: "POM-DOL-14", name: "Dream Pomade Oil Based Light Hold", costPrice: 80000,  sellingPrice: 120000, stock: 4, minStock: 2, unit: "sachet", isActive: true },
+      { id: "prd_dream_wb_strong", categoryId: "cat_pomade", sku: "POM-DWS-15", name: "Dream Pomade WB Strong Hold",       costPrice: 80000,  sellingPrice: 120000, stock: 3, minStock: 2, unit: "sachet", isActive: true },
+      { id: "prd_dream_wb_hyper",  categoryId: "cat_pomade", sku: "POM-DWH-16", name: "Dream Pomade WB Hyper Strong",      costPrice: 80000,  sellingPrice: 120000, stock: 3, minStock: 2, unit: "sachet", isActive: true },
+      { id: "prd_puppet_wb",       categoryId: "cat_pomade", sku: "POM-PPW-17", name: "Puppet Pomade Waterbased",          costPrice: 85000,  sellingPrice: 130000, stock: 0, minStock: 2, unit: "sachet", isActive: true },
+      { id: "prd_puppet_clay",     categoryId: "cat_pomade", sku: "POM-PPC-18", name: "Puppet Clay",                      costPrice: 100000, sellingPrice: 130000, stock: 0, minStock: 2, unit: "sachet", isActive: true },
+      { id: "prd_freestyle_dust",  categoryId: "cat_powder", sku: "PWD-FSD-19", name: "Powder Free Style Dust",            costPrice: 75000,  sellingPrice: 110000, stock: 4, minStock: 2, unit: "sachet", isActive: true },
+      { id: "prd_hairpro_dot",     categoryId: "cat_pomade", sku: "POM-HPD-20", name: "Hairpro Dot Clay",                  costPrice: 75000,  sellingPrice: 110000, stock: 2, minStock: 2, unit: "sachet", isActive: true },
+      { id: "prd_hair_paste_new",  categoryId: "cat_pomade", sku: "POM-HPN-21", name: "Hair Paste New",                    costPrice: 75000,  sellingPrice: 110000, stock: 2, minStock: 2, unit: "sachet", isActive: true },
+      { id: "prd_hairpro_wb_new",  categoryId: "cat_pomade", sku: "POM-HWN-22", name: "Hairpro Water Based New",           costPrice: 75000,  sellingPrice: 110000, stock: 3, minStock: 2, unit: "sachet", isActive: true },
+      { id: "prd_puppet_murph",    categoryId: "cat_powder", sku: "PWD-PPM-23", name: "Powder Puppet Murpheus",            costPrice: 75000,  sellingPrice: 100000, stock: 0, minStock: 2, unit: "sachet", isActive: true },
+    ];
+    for (const p of prods) {
+      try {
+        await prisma.product.upsert({
+          where: { sku: p.sku },
+          update: {
+            name: p.name,
+            costPrice: p.costPrice,
+            sellingPrice: p.sellingPrice,
+            stock: p.stock,
+            unit: p.unit,
+            minStock: p.minStock,
+          },
+          create: p,
+        });
+      } catch {}
     }
 
     console.log("✅ ensureSupabaseSchema: selesai");
@@ -1650,11 +1689,35 @@ export async function deleteService(id: string) {
 export async function getProducts(categoryId?: string) {
   return safeDb(
     async () => {
-      return await prisma.product.findMany({
-        where: categoryId ? { categoryId, isActive: true } : { isActive: true },
-        include: { category: true },
-        orderBy: { name: "asc" },
-      });
+      // Use raw SQL to read stock_telkom and stock_suta (extra columns not in Prisma schema)
+      const rawProds = await prisma.$queryRawUnsafe<any[]>(
+        categoryId
+          ? `SELECT p.*, p.stock_telkom as "stockTelkom", p.stock_suta as "stockSuta", c.id as "cat_id", c.name as "cat_name", c.slug as "cat_slug"
+             FROM "products" p LEFT JOIN "product_categories" c ON c.id = p.category_id
+             WHERE p.category_id = $1 AND p.is_active = true ORDER BY p.name ASC`
+          : `SELECT p.*, p.stock_telkom as "stockTelkom", p.stock_suta as "stockSuta", c.id as "cat_id", c.name as "cat_name", c.slug as "cat_slug"
+             FROM "products" p LEFT JOIN "product_categories" c ON c.id = p.category_id
+             WHERE p.is_active = true ORDER BY p.name ASC`,
+        ...(categoryId ? [categoryId] : [])
+      ).catch(() => [] as any[]);
+      return rawProds.map((p: any) => ({
+        id: p.id,
+        sku: p.sku,
+        name: p.name,
+        categoryId: p.category_id,
+        costPrice: p.cost_price,
+        sellingPrice: p.selling_price,
+        stock: p.stock,
+        stockTelkom: p.stockTelkom ?? p.stock_telkom ?? p.stock,
+        stockSuta: p.stockSuta ?? p.stock_suta ?? 0,
+        minStock: p.min_stock,
+        supplier: p.supplier,
+        unit: p.unit,
+        isActive: p.is_active,
+        createdAt: p.created_at,
+        updatedAt: p.updated_at,
+        category: p.cat_id ? { id: p.cat_id, name: p.cat_name, slug: p.cat_slug } : null,
+      }));
     },
     () => {
       let list = memoryDB.products.filter((p) => p.isActive);
@@ -1776,6 +1839,41 @@ export interface CreateTransferInput {
 }
 
 export async function getProductTransfers(branch?: string) {
+  const dbUrl = process.env.DATABASE_URL || "";
+  const hasPersistentDb = !!dbUrl && !dbUrl.includes("[YOUR-") && !dbUrl.includes("placeholder");
+
+  if (hasPersistentDb) {
+    try {
+      const rows = await prisma.$queryRawUnsafe<any[]>(
+        branch && branch !== "All"
+          ? `SELECT * FROM "product_transfers" WHERE "from_branch" ILIKE $1 OR "to_branch" ILIKE $1 ORDER BY "created_at" DESC LIMIT 200`
+          : `SELECT * FROM "product_transfers" ORDER BY "created_at" DESC LIMIT 200`,
+        ...(branch && branch !== "All" ? [`%${branch}%`] : [])
+      );
+      return rows.map((r: any) => ({
+        id: r.id,
+        transferNumber: r.transfer_number,
+        productId: r.product_id,
+        productName: r.product_name,
+        productSku: r.product_sku,
+        categoryName: r.category_name,
+        fromBranch: r.from_branch,
+        toBranch: r.to_branch,
+        quantity: r.quantity,
+        unit: r.unit,
+        notes: r.notes,
+        createdBy: r.created_by,
+        status: r.status,
+        stockTelkomAfter: r.stock_telkom_after,
+        stockSutaAfter: r.stock_suta_after,
+        createdAt: r.created_at,
+      }));
+    } catch {
+      return [];
+    }
+  }
+
+  // Memory fallback
   await initMemoryDBIfNeeded();
   syncFromLocalDB();
   let list = (memoryDB.transfers || []).sort(
@@ -1792,6 +1890,92 @@ export async function getProductTransfers(branch?: string) {
 }
 
 export async function createProductTransfer(input: CreateTransferInput) {
+  const dbUrl = process.env.DATABASE_URL || "";
+  const hasPersistentDb = !!dbUrl && !dbUrl.includes("[YOUR-") && !dbUrl.includes("placeholder");
+
+  if (hasPersistentDb) {
+    // Prisma path: read product from DB via raw SQL (to get stock_telkom/stock_suta)
+    const [product] = await prisma.$queryRawUnsafe<any[]>(
+      `SELECT p.*, p.stock_telkom as "stockTelkom", p.stock_suta as "stockSuta", c.name as "categoryName"
+       FROM "products" p LEFT JOIN "product_categories" c ON c.id = p.category_id
+       WHERE p.id = $1 AND p.is_active = true LIMIT 1`,
+      input.productId
+    ).catch(() => [] as any[]);
+
+    if (!product) throw new Error("Produk tidak ditemukan");
+
+    const qty = Number(input.quantity);
+    if (isNaN(qty) || qty <= 0) throw new Error("Jumlah transfer harus lebih dari 0");
+
+    const tlkFrom = input.fromBranch.toLowerCase().includes("telkom");
+    const stockTelkom = Number(product.stockTelkom ?? product.stock_telkom ?? 0);
+    const stockSuta = Number(product.stockSuta ?? product.stock_suta ?? 0);
+    const senderStock = tlkFrom ? stockTelkom : stockSuta;
+
+    if (senderStock < qty) {
+      throw new Error(`Stok tidak mencukupi. Stok tersedia di ${input.fromBranch}: ${senderStock}.`);
+    }
+
+    const newTelkom = tlkFrom ? stockTelkom - qty : stockTelkom + qty;
+    const newSuta = tlkFrom ? stockSuta + qty : stockSuta - qty;
+    const newTotal = newTelkom + newSuta;
+
+    // Update stock columns in DB atomically
+    await prisma.$executeRawUnsafe(
+      `UPDATE "products" SET "stock_telkom" = $1, "stock_suta" = $2, "stock" = $3 WHERE "id" = $4`,
+      newTelkom, newSuta, newTotal, input.productId
+    );
+
+    const todayStr = format(new Date(), "yyyyMMdd");
+    const codeFrom = tlkFrom ? "TLK" : "SUT";
+    const codeTo = tlkFrom ? "SUT" : "TLK";
+    // Get transfer count for today for numbering
+    const [countRow] = await prisma.$queryRawUnsafe<any[]>(
+      `SELECT COUNT(*) as cnt FROM "product_transfers" WHERE "created_at" >= CURRENT_DATE`
+    ).catch(() => [{ cnt: 0 }]);
+    const count = Number(countRow?.cnt ?? 0) + 1;
+    const transferNumber = `TRF-${codeFrom}-${codeTo}-${todayStr}-${String(count).padStart(3, "0")}`;
+
+    const transferId = `trf_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const notesValue = input.notes || "Transfer stok operasional cabang";
+    const createdByValue = input.createdBy || "Admin";
+
+    await prisma.$executeRawUnsafe(
+      `INSERT INTO "product_transfers" ("id","transfer_number","product_id","product_name","product_sku","category_name","from_branch","to_branch","quantity","unit","notes","created_by","status","stock_telkom_after","stock_suta_after","created_at")
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'COMPLETED',$13,$14,NOW())`,
+      transferId, transferNumber, input.productId, product.name, product.sku || "",
+      product.categoryName || "Produk", input.fromBranch, input.toBranch, qty,
+      product.unit || "pcs", notesValue, createdByValue, newTelkom, newSuta
+    );
+
+    await recordActivity({
+      action: "TRANSFER_PRODUK",
+      description: `Transfer ${qty} ${product.unit || "pcs"} ${product.name} dari ${input.fromBranch} ke ${input.toBranch} (${transferNumber})`,
+      branch: tlkFrom ? "Telkom" : "Suta",
+      actor: createdByValue,
+    });
+
+    return {
+      id: transferId,
+      transferNumber,
+      productId: input.productId,
+      productName: product.name,
+      productSku: product.sku || "",
+      categoryName: product.categoryName || "Produk",
+      fromBranch: input.fromBranch,
+      toBranch: input.toBranch,
+      quantity: qty,
+      unit: product.unit || "pcs",
+      notes: notesValue,
+      createdBy: createdByValue,
+      status: "COMPLETED",
+      stockTelkomAfter: newTelkom,
+      stockSutaAfter: newSuta,
+      createdAt: new Date().toISOString(),
+    };
+  }
+
+  // Memory fallback
   await initMemoryDBIfNeeded();
   syncFromLocalDB();
 
@@ -1916,8 +2100,13 @@ export async function getCustomers(query?: string) {
     }
     return await prisma.customer.findMany({
       where,
-      orderBy: { createdAt: "desc" },
-      take: query ? 20 : 200,
+      include: {
+        favoriteBarberman: {
+          select: { id: true, name: true, nickname: true, branch: true, workingBranch: true }
+        }
+      },
+      orderBy: { updatedAt: "desc" },
+      take: query ? 30 : 200,
     }).catch(() => []);
   }
 
@@ -2130,6 +2319,52 @@ export async function deleteMember(id: string) {
 
 // BOOKINGS
 export async function getBookings(dateStr?: string, branch?: string) {
+  const dbUrl = process.env.DATABASE_URL || "";
+  const hasPersistentDb = !!dbUrl && !dbUrl.includes("[YOUR-") && !dbUrl.includes("placeholder");
+
+  if (hasPersistentDb) {
+    const where: any = {};
+    if (dateStr) {
+      const parts = dateStr.split("-").map(Number);
+      let targetStart: Date, targetEnd: Date;
+      if (parts.length === 3) {
+        targetStart = new Date(parts[0], parts[1] - 1, parts[2], 0, 0, 0, 0);
+        targetEnd = new Date(parts[0], parts[1] - 1, parts[2], 23, 59, 59, 999);
+      } else {
+        const d = new Date(dateStr);
+        targetStart = startOfDay(d);
+        targetEnd = endOfDay(d);
+      }
+      where.bookingDate = { gte: targetStart, lte: targetEnd };
+    }
+
+    const rows = await prisma.booking.findMany({
+      where,
+      include: {
+        barberman: true,
+        service: true,
+        customer: true,
+      },
+      orderBy: { bookingTime: "asc" },
+    }).catch(() => []);
+
+    const mapped = rows.map((b: any) => {
+      const bBranch = b.branch || b.barberman?.workingBranch || b.barberman?.branch || "Telkom";
+      return {
+        ...b,
+        branch: bBranch,
+        dpPaid: 20000,
+        dpAmount: 20000,
+        dpStatus: b.dpStatus || "SUDAH_DIBAYAR",
+      };
+    });
+
+    if (branch && branch !== "All") {
+      return mapped.filter((b: any) => b.branch === branch);
+    }
+    return mapped;
+  }
+
   await initMemoryDBIfNeeded();
   syncFromLocalDB();
 
@@ -2327,6 +2562,8 @@ export interface CheckoutPayload {
   changeAmount: number;
   paymentRef?: string;
   notes?: string;
+  bookingId?: string | null;
+  dpAmount?: number;
 }
 
 export async function processCheckout(payload: CheckoutPayload & { branch?: string }) {
@@ -2497,6 +2734,15 @@ export async function processCheckout(payload: CheckoutPayload & { branch?: stri
         branch: txBranch,
       },
     });
+
+    // Jika transaksi berasal dari booking, tandai booking status COMPLETED
+    if (payload.bookingId) {
+      await tx.booking.update({
+        where: { id: payload.bookingId },
+        data: { status: "COMPLETED" },
+      }).catch(() => {});
+    }
+
     return transaction;
   });
 
@@ -2808,6 +3054,11 @@ async function processCheckoutMemoryFallback(payload: CheckoutPayload & { branch
     console.warn("⚠️ [processCheckout] Prisma dual-write error (data tetap aman di lokal):", e?.message);
   }
 
+  if (payload.bookingId) {
+    const bIdx = (memoryDB.bookings || []).findIndex((b: any) => b.id === payload.bookingId);
+    if (bIdx !== -1) memoryDB.bookings[bIdx].status = "COMPLETED";
+  }
+
   saveLocalDB();
 
   return {
@@ -2890,11 +3141,23 @@ export async function getCashLedger(branch?: string) {
   let initialFloatSuta: number;
 
   if (hasPersistentDb) {
-    // Query Prisma langsung
-    rawList = await prisma.cashTransaction.findMany({
-      orderBy: { createdAt: "desc" },
-    }).catch(() => []);
-    const settings = await prisma.shopSetting.findFirst().catch(() => null);
+    const where: any = {};
+    if (branch && branch !== "All") {
+      where.OR = [
+        { branch },
+        { branch: "All" },
+        { branch: null },
+      ];
+    }
+    const [cashList, settings] = await Promise.all([
+      prisma.cashTransaction.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        take: 300,
+      }).catch(() => []),
+      prisma.shopSetting.findFirst().catch(() => null),
+    ]);
+    rawList = cashList;
     initialFloatTelkom = (settings as any)?.initialCashFloatTelkom ?? settings?.initialCashFloat ?? 100000;
     initialFloatSuta = (settings as any)?.initialCashFloatSuta ?? settings?.initialCashFloat ?? 100000;
   } else {
@@ -3131,6 +3394,7 @@ export async function getDashboardData(
       cashTxs,
       allBarbers,
       settings,
+      branchBkCount,
     ] = await Promise.all([
       // Transaksi periode terpilih
       prisma.transaction.findMany({
@@ -3175,6 +3439,12 @@ export async function getDashboardData(
           createdAt: { gte: startOfYear(now) },
           ...(branch && branch !== "All" ? { branch } : {}),
         },
+        select: {
+          type: true,
+          amount: true,
+          category: true,
+          branch: true,
+        },
       }).catch(() => []),
 
       // Semua barber aktif
@@ -3182,6 +3452,16 @@ export async function getDashboardData(
 
       // Shop settings
       prisma.shopSetting.findFirst().catch(() => null),
+
+      // Branch booking count (jika filter cabang aktif)
+      (branch && branch !== "All")
+        ? prisma.booking.count({
+            where: {
+              bookingDate: { gte: startOfDay(now), lte: endOfDay(now) },
+              barberman: { workingBranch: branch },
+            },
+          }).catch(() => 0)
+        : Promise.resolve(0),
     ]);
 
     const initFloatTelkom = (settings as any)?.initialCashFloatTelkom ?? (settings as any)?.initialCashFloat ?? 100000;
@@ -3254,14 +3534,8 @@ export async function getDashboardData(
     });
 
     if (branch && branch !== "All") {
-      const bkCount = await prisma.booking.count({
-        where: {
-          bookingDate: { gte: startOfDay(now), lte: endOfDay(now) },
-          barberman: { workingBranch: branch },
-        },
-      }).catch(() => 0);
       const metrics = calcBranchStatsDirect(branch);
-      metrics.todayBooking = bkCount;
+      metrics.todayBooking = Number(branchBkCount || 0);
       return {
         filter,
         branch,
@@ -3468,6 +3742,27 @@ export async function getCategoryReport(categorySlug: string | string[], startDa
       include: { category: true },
     }).catch(() => []);
 
+    const prodIds = prods.map((p) => p.id);
+    const txFilter: any = { productId: { in: prodIds } };
+    if (branch && branch !== "All") txFilter.transaction = { branch };
+    if (startDate || endDate) {
+      txFilter.transaction = { ...(txFilter.transaction || {}), createdAt: {} };
+      if (startDate) txFilter.transaction.createdAt.gte = startDate;
+      if (endDate) txFilter.transaction.createdAt.lte = endDate;
+    }
+
+    const allItems = prodIds.length > 0
+      ? await prisma.transactionItem.findMany({ where: txFilter }).catch(() => [])
+      : [];
+
+    const itemsByProd: Record<string, any[]> = {};
+    for (const it of allItems) {
+      if (it.productId) {
+        if (!itemsByProd[it.productId]) itemsByProd[it.productId] = [];
+        itemsByProd[it.productId].push(it);
+      }
+    }
+
     let totalSold = 0; let totalOmzet = 0; let totalModal = 0; let currentStock = 0;
     const productStats: any[] = [];
 
@@ -3475,15 +3770,7 @@ export async function getCategoryReport(categorySlug: string | string[], startDa
       const prodStock = prod.stock || 0;
       currentStock += prodStock;
 
-      const txFilter: any = { productId: prod.id };
-      if (branch && branch !== "All") txFilter.transaction = { branch };
-      if (startDate || endDate) {
-        txFilter.transaction = { ...(txFilter.transaction || {}), createdAt: {} };
-        if (startDate) txFilter.transaction.createdAt.gte = startDate;
-        if (endDate) txFilter.transaction.createdAt.lte = endDate;
-      }
-
-      const items = await prisma.transactionItem.findMany({ where: txFilter }).catch(() => []);
+      const items = itemsByProd[prod.id] || [];
       let prodSold = 0; let prodOmzet = 0; let prodModal = 0;
       for (const it of items) {
         prodSold += it.quantity;
