@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getShopSettings, updateShopSettings, resetDatabase } from "@/lib/db";
 import { withCache, invalidateCache, TTL } from "@/lib/cache";
+import { getAdminSession } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -34,6 +35,11 @@ export async function PUT(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const session = await getAdminSession();
+    if (!session || (!session.role.startsWith("ADMIN") && session.role !== "ADMIN")) {
+      return NextResponse.json({ error: "Hanya role Admin yang memiliki izin untuk mereset data!" }, { status: 403 });
+    }
+
     const body = await req.json().catch(() => ({}));
     const mode = body.mode === "clean" ? "clean" : "demo";
     await resetDatabase(mode);

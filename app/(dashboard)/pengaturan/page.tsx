@@ -38,6 +38,11 @@ export default function PengaturanPage() {
   // Database Connection Diagnostics
   const [dbDiag, setDbDiag] = useState<any>(null);
   const [checkingDb, setCheckingDb] = useState(false);
+  const [session, setSession] = useState<any>(null);
+
+  const isAdmin =
+    session?.role?.startsWith("ADMIN") ||
+    session?.role === "ADMIN";
 
   const checkDatabase = () => {
     setCheckingDb(true);
@@ -49,6 +54,14 @@ export default function PengaturanPage() {
   };
 
   useEffect(() => {
+    fetch("/api/auth/me")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.authenticated && data?.user) setSession(data.user);
+        else if (data?.user) setSession(data.user);
+      })
+      .catch(() => {});
+
     fetch("/api/settings")
       .then((res) => res.json())
       .then((data) => {
@@ -366,114 +379,129 @@ export default function PengaturanPage() {
             </form>
           </Card>
 
-          {/* STATUS DATABASE & CLOUD SYNC */}
-          <Card className={`border shadow-sm p-6 ${dbDiag?.connected ? "border-emerald-200 bg-white" : "border-slate-200 bg-white"}`}>
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-3">
-                <div className={`p-2.5 rounded-xl ${dbDiag?.connected ? "bg-emerald-50 text-emerald-600 border border-emerald-200" : "bg-blue-50 text-blue-600 border border-blue-200"}`}>
-                  <Database className="w-5 h-5" />
-                </div>
-                <div>
-                  <CardTitle className="text-base font-bold text-slate-900">Status Database Cloud</CardTitle>
-                  <p className="text-xs text-slate-500">Penyimpanan data riil transaksi kasir & laporan.</p>
-                </div>
-              </div>
-              <Button
-                onClick={checkDatabase}
-                disabled={checkingDb}
-                variant="outline"
-                size="sm"
-                className="text-[11px] h-8 px-2.5 border-slate-200 text-slate-700"
-              >
-                <RefreshCw className={`w-3 h-3 mr-1.5 ${checkingDb ? "animate-spin" : ""}`} />
-                {checkingDb ? "Memeriksa..." : "Tes Koneksi"}
-              </Button>
-            </div>
-
-            <div className="mt-4 space-y-3">
-              <div className="flex items-center gap-2">
-                <div className={`w-2.5 h-2.5 rounded-full ${dbDiag?.connected ? "bg-emerald-500 animate-pulse" : "bg-blue-500"}`} />
-                <span className={`text-xs font-bold ${dbDiag?.connected ? "text-emerald-700" : "text-blue-700"}`}>
-                  {dbDiag?.connected ? "Terhubung ke Supabase Cloud (Data Permanen)" : "Mode Database Lokal / File (Aktif & Terjaga)"}
-                </span>
-              </div>
-
-              {dbDiag?.connected ? (
-                <div className="text-[11px] text-slate-700 bg-emerald-50 border border-emerald-200 p-3 rounded-xl space-y-1">
-                  <div className="text-emerald-800 font-semibold">Semua data kasir & transaksi tersimpan aman di Supabase.</div>
-                  <div className="text-slate-500 text-[10px]">
-                    Koneksi: {dbDiag?.connectionType}
-                    {dbDiag?.tableCounts && ` • Transaksi: ${dbDiag.tableCounts.transactions} • Layanan: ${dbDiag.tableCounts.services} • Produk: ${dbDiag.tableCounts.products}`}
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <div className="text-[11px] text-slate-600 bg-slate-50 border border-slate-200 p-3 rounded-xl leading-relaxed">
-                    <div className="font-bold flex items-center gap-1 text-slate-800 mb-1">
-                      <AlertTriangle className="w-3.5 h-3.5 text-blue-600" />
-                      Status Penyimpanan Data:
+          {/* HANYA ROLE ADMIN YANG DAPAT MELIHAT KONEKSI DATABASE & MERESET DATA */}
+          {isAdmin ? (
+            <>
+              {/* STATUS DATABASE & CLOUD SYNC */}
+              <Card className={`border shadow-sm p-6 ${dbDiag?.connected ? "border-emerald-200 bg-white" : "border-slate-200 bg-white"}`}>
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2.5 rounded-xl ${dbDiag?.connected ? "bg-emerald-50 text-emerald-600 border border-emerald-200" : "bg-blue-50 text-blue-600 border border-blue-200"}`}>
+                      <Database className="w-5 h-5" />
                     </div>
-                    {dbDiag?.warning || "Sistem saat ini aktif menggunakan database lokal terintegrasi. Semua produk, layanan, transfer, dan transaksi tersimpan aman."}
+                    <div>
+                      <CardTitle className="text-base font-bold text-slate-900">Status Database Cloud</CardTitle>
+                      <p className="text-xs text-slate-500">Penyimpanan data riil transaksi kasir & laporan.</p>
+                    </div>
+                  </div>
+                  <Button
+                    onClick={checkDatabase}
+                    disabled={checkingDb}
+                    variant="outline"
+                    size="sm"
+                    className="text-[11px] h-8 px-2.5 border-slate-200 text-slate-700"
+                  >
+                    <RefreshCw className={`w-3 h-3 mr-1.5 ${checkingDb ? "animate-spin" : ""}`} />
+                    {checkingDb ? "Memeriksa..." : "Tes Koneksi"}
+                  </Button>
+                </div>
+
+                <div className="mt-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-2.5 h-2.5 rounded-full ${dbDiag?.connected ? "bg-emerald-500 animate-pulse" : "bg-blue-500"}`} />
+                    <span className={`text-xs font-bold ${dbDiag?.connected ? "text-emerald-700" : "text-blue-700"}`}>
+                      {dbDiag?.connected ? "Terhubung ke Supabase Cloud (Data Permanen)" : "Mode Database Lokal / File (Aktif & Terjaga)"}
+                    </span>
+                  </div>
+
+                  {dbDiag?.connected ? (
+                    <div className="text-[11px] text-slate-700 bg-emerald-50 border border-emerald-200 p-3 rounded-xl space-y-1">
+                      <div className="text-emerald-800 font-semibold">Semua data kasir & transaksi tersimpan aman di Supabase.</div>
+                      <div className="text-slate-500 text-[10px]">
+                        Koneksi: {dbDiag?.connectionType}
+                        {dbDiag?.tableCounts && ` • Transaksi: ${dbDiag.tableCounts.transactions} • Layanan: ${dbDiag.tableCounts.services} • Produk: ${dbDiag.tableCounts.products}`}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="text-[11px] text-slate-600 bg-slate-50 border border-slate-200 p-3 rounded-xl leading-relaxed">
+                        <div className="font-bold flex items-center gap-1 text-slate-800 mb-1">
+                          <AlertTriangle className="w-3.5 h-3.5 text-blue-600" />
+                          Status Penyimpanan Data:
+                        </div>
+                        {dbDiag?.warning || "Sistem saat ini aktif menggunakan database lokal terintegrasi. Semua produk, layanan, transfer, dan transaksi tersimpan aman."}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </Card>
+
+              {/* SINKRONISASI & RESET DATA */}
+              <Card className="border-slate-200/80 shadow-sm bg-white p-6">
+                <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
+                  <div className="p-2.5 rounded-xl bg-blue-50 text-blue-700 border border-blue-200">
+                    <RefreshCw className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-base font-bold text-slate-900">Reset & Manajemen Data</CardTitle>
+                    <p className="text-xs text-slate-500">Pilih reset sampel demo atau bersihkan transaksi untuk jualan nyata.</p>
                   </div>
                 </div>
-              )}
-            </div>
-          </Card>
 
-          {/* SINKRONISASI & RESET DATA */}
-          <Card className="border-slate-200/80 shadow-sm bg-white p-6">
-            <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
-              <div className="p-2.5 rounded-xl bg-blue-50 text-blue-700 border border-blue-200">
-                <RefreshCw className="w-5 h-5" />
-              </div>
-              <div>
-                <CardTitle className="text-base font-bold text-slate-900">Reset & Manajemen Data</CardTitle>
-                <p className="text-xs text-slate-500">Pilih reset sampel demo atau bersihkan transaksi untuk jualan nyata.</p>
-              </div>
-            </div>
+                <div className="space-y-4 mt-4">
+                  {/* OPSI 1: RESET DATA DEMO */}
+                  <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+                    <div className="text-xs font-bold text-blue-700 flex items-center gap-1.5">
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      <span>Opsi 1: Reset ke Data Sampel Demo</span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 leading-relaxed">
+                      Mengembalikan 6 barberman (Telkom & Suta), produk lengkap, stok cabang, dan 30 sampel transaksi demo (20 Telkom + 10 Suta) ke database Supabase.
+                    </p>
+                    <Button
+                      onClick={() => handleResetDemoData("demo")}
+                      disabled={resetting}
+                      variant="outline"
+                      className="w-full mt-2 border-blue-200 text-blue-700 hover:bg-blue-50 font-bold text-xs"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 mr-2 ${resetting ? "animate-spin" : ""}`} />
+                      {resetting ? "Memproses..." : "Reset ke Data Sampel Default"}
+                    </Button>
+                  </div>
 
-            <div className="space-y-4 mt-4">
-              {/* OPSI 1: RESET DATA DEMO */}
-              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
-                <div className="text-xs font-bold text-blue-700 flex items-center gap-1.5">
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  <span>Opsi 1: Reset ke Data Sampel Demo</span>
+                  {/* OPSI 2: BERSIHKAN TRANSAKSI */}
+                  <div className="p-3.5 rounded-xl bg-rose-50/50 border border-rose-200 space-y-2">
+                    <div className="text-xs font-bold text-rose-700 flex items-center gap-1.5">
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Opsi 2: Kosongkan Transaksi (Siap Jualan Riil)</span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 leading-relaxed">
+                      Menghapus riwayat transaksi kasir dan booking lama, namun mempertahankan data Barberman, Layanan, dan Produk.
+                    </p>
+                    <Button
+                      onClick={() => handleResetDemoData("clean")}
+                      disabled={resetting}
+                      variant="outline"
+                      className="w-full mt-2 border-rose-200 text-rose-600 hover:bg-rose-50 font-bold text-xs"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 mr-2" />
+                      {resetting ? "Memproses..." : "Kosongkan Riwayat Transaksi"}
+                    </Button>
+                  </div>
                 </div>
-                <p className="text-[11px] text-slate-500 leading-relaxed">
-                  Mengembalikan 6 barberman (Telkom & Suta), produk lengkap, stok cabang, dan 30 sampel transaksi demo (20 Telkom + 10 Suta) ke database Supabase.
-                </p>
-                <Button
-                  onClick={() => handleResetDemoData("demo")}
-                  disabled={resetting}
-                  variant="outline"
-                  className="w-full mt-2 border-blue-200 text-blue-700 hover:bg-blue-50 font-bold text-xs"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 mr-2 ${resetting ? "animate-spin" : ""}`} />
-                  {resetting ? "Memproses..." : "Reset ke Data Sampel Default"}
-                </Button>
+              </Card>
+            </>
+          ) : (
+            <Card className="border-slate-200/80 shadow-sm bg-slate-50/70 p-5 rounded-2xl text-center border-dashed">
+              <div className="w-10 h-10 rounded-full bg-slate-100 border border-slate-200 text-slate-500 flex items-center justify-center mx-auto mb-2.5">
+                <Lock className="w-5 h-5 text-slate-600" />
               </div>
-
-              {/* OPSI 2: BERSIHKAN TRANSAKSI */}
-              <div className="p-3.5 rounded-xl bg-rose-50/50 border border-rose-200 space-y-2">
-                <div className="text-xs font-bold text-rose-700 flex items-center gap-1.5">
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>Opsi 2: Kosongkan Transaksi (Siap Jualan Riil)</span>
-                </div>
-                <p className="text-[11px] text-slate-500 leading-relaxed">
-                  Menghapus riwayat transaksi kasir dan booking lama, namun mempertahankan data Barberman, Layanan, dan Produk.
-                </p>
-                <Button
-                  onClick={() => handleResetDemoData("clean")}
-                  disabled={resetting}
-                  variant="outline"
-                  className="w-full mt-2 border-rose-200 text-rose-600 hover:bg-rose-50 font-bold text-xs"
-                >
-                  <Trash2 className="w-3.5 h-3.5 mr-2" />
-                  {resetting ? "Memproses..." : "Kosongkan Riwayat Transaksi"}
-                </Button>
-              </div>
-            </div>
-          </Card>
+              <div className="text-xs font-bold text-slate-800">Akses Diagnostik & Reset Terbatas</div>
+              <p className="text-[11px] text-slate-500 mt-1 max-w-xs mx-auto leading-relaxed">
+                Koneksi database dan fitur reset data hanya dapat diakses dan dijalankan oleh role <strong>Admin</strong>.
+              </p>
+            </Card>
+          )}
         </div>
       </div>
     </div>

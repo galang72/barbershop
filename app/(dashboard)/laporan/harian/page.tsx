@@ -46,14 +46,20 @@ export default function LaporanHarianPage() {
   }, [selectedDate]);
 
   const handleExport = (type: "excel" | "csv") => {
-    const barberData = (report?.barbermanPerformance || []).map((b: any) => ({
-      "Barberman": b.name,
-      "Customer": b.customerCount,
-      "Transaksi": b.transactionCount,
-      "Omzet": b.omzet,
+    const txData = (report?.transactions || []).map((t: any) => ({
+      "No. Invoice": t.invoiceNumber,
+      "Waktu": new Date(t.createdAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) + " WIB",
+      "Cabang": t.branch || "-",
+      "Customer": t.customerName || "-",
+      "No. HP": t.customerPhone || "-",
+      "Barberman": t.barberman?.name || "-",
+      "Layanan / Produk": (t.items || []).map((it: any) => `${it.name}${it.quantity > 1 ? ` (${it.quantity}x)` : ''} - ${formatRupiah(it.subtotal)}`).join("; "),
+      "Metode Pembayaran": t.paymentMethod || "CASH",
+      "Diskon / DP": t.discount ? formatRupiah(t.discount) : "Rp 0",
+      "Total Transaksi": t.grandTotal,
     }));
-    if (type === "excel") exportToExcel(barberData, `Laporan_Harian_${selectedDate}`);
-    else exportToCSV(barberData, `Laporan_Harian_${selectedDate}`);
+    if (type === "excel") exportToExcel(txData, `Laporan_Transaksi_Harian_${selectedDate}`);
+    else exportToCSV(txData, `Laporan_Transaksi_Harian_${selectedDate}`);
   };
 
   const totalBarberCust = (report?.barbermanPerformance || []).reduce((acc: number, b: any) => acc + (b.customerCount || 0), 0);
@@ -266,15 +272,15 @@ export default function LaporanHarianPage() {
         </div>
       </Card>
 
-      {/* DAFTAR JURNAL TRANSAKSI KASIR HARI INI */}
+      {/* DAFTAR JURNAL TRANSAKSI KASIR HARI INI (RINCIAN LENGKAP UANG MASUK) */}
       <Card className="border-slate-200/80 shadow-sm bg-white overflow-hidden">
         <div className="p-4 border-b border-slate-200 flex items-center justify-between">
           <CardTitle className="text-sm font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">
             <Receipt className="w-4 h-4 text-blue-600 no-print" />
-            <span>Jurnal Transaksi Kasir ({formatDateIndo(selectedDate)})</span>
+            <span>Rincian Sumber Uang Masuk & Transaksi Kasir ({formatDateIndo(selectedDate)})</span>
           </CardTitle>
           <span className="text-xs text-slate-500 font-mono font-medium">
-            {(report?.transactions || []).length} struk tercatat
+            {(report?.transactions || []).length} transaksi tercatat
           </span>
         </div>
 
@@ -282,44 +288,94 @@ export default function LaporanHarianPage() {
           <table className="w-full text-left border-collapse text-xs">
             <thead>
               <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-500 uppercase font-bold tracking-wider">
-                <th className="py-3 px-3">No. Invoice</th>
+                <th className="py-3 px-3">No. Invoice & Cabang</th>
                 <th className="py-3 px-3">Waktu</th>
-                <th className="py-3 px-3">Pelanggan</th>
+                <th className="py-3 px-3">Customer / Pelanggan</th>
                 <th className="py-3 px-3">Barberman</th>
-                <th className="py-3 px-3">Item Layanan / Produk</th>
-                <th className="py-3 px-3 text-center">Metode</th>
-                <th className="py-3 px-3 text-right">Total Bayar</th>
+                <th className="py-3 px-3">Rincian Layanan & Produk</th>
+                <th className="py-3 px-3 text-center">Metode Bayar</th>
+                <th className="py-3 px-3 text-right">Potongan / DP</th>
+                <th className="py-3 px-3 text-right">Total Transaksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {(report?.transactions || []).length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-8 text-center text-slate-400">
+                  <td colSpan={8} className="py-8 text-center text-slate-400">
                     Belum ada transaksi kasir pada tanggal ini.
                   </td>
                 </tr>
               ) : (
                 (report?.transactions || []).map((t: any, idx: number) => {
-                  const itemsSummary = (t.items || []).map((it: any) => `${it.name}${it.quantity > 1 ? ` x${it.quantity}` : ''}`).join(", ");
                   const timeStr = new Date(t.createdAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+                  const isQR = t.paymentMethod === "QRIS" || t.paymentMethod === "TRANSFER" || t.paymentMethod === "DEBIT";
                   return (
                     <tr key={idx} className="hover:bg-blue-50/40">
-                      <td className="py-3 px-3 font-mono font-bold text-blue-700">{t.invoiceNumber}</td>
-                      <td className="py-3 px-3 text-slate-500">{timeStr} WIB</td>
-                      <td className="py-3 px-3 font-semibold text-slate-900">
-                        {t.customerName}
-                        {t.customerPhone ? <span className="text-[10px] text-slate-400 block">{t.customerPhone}</span> : null}
-                      </td>
-                      <td className="py-3 px-3 text-slate-700">{t.barberman?.name || "-"}</td>
-                      <td className="py-3 px-3 text-slate-600 max-w-xs truncate" title={itemsSummary}>
-                        {itemsSummary}
-                      </td>
-                      <td className="py-3 px-3 text-center font-bold text-xs">
-                        <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
-                          {t.paymentMethod}
+                      <td className="py-3 px-3">
+                        <div className="font-mono font-bold text-blue-700">{t.invoiceNumber}</div>
+                        <span className={`inline-block text-[10px] font-bold px-1.5 py-0.2 rounded border mt-0.5 ${
+                          t.branch === "Telkom"
+                            ? "bg-blue-50 text-blue-700 border-blue-200"
+                            : t.branch === "Suta"
+                            ? "bg-indigo-50 text-indigo-700 border-indigo-200"
+                            : "bg-slate-100 text-slate-600 border-slate-200"
+                        }`}>
+                          {t.branch ? `Cabang ${t.branch}` : "Semua Cabang"}
                         </span>
                       </td>
-                      <td className="py-3 px-3 text-right font-black text-slate-900">{formatRupiah(t.grandTotal)}</td>
+                      <td className="py-3 px-3 text-slate-500 whitespace-nowrap">{timeStr} WIB</td>
+                      <td className="py-3 px-3">
+                        <div className="font-bold text-slate-900">{t.customerName}</div>
+                        {t.customerPhone ? <span className="text-[10px] text-slate-500 block font-mono">{t.customerPhone}</span> : null}
+                      </td>
+                      <td className="py-3 px-3">
+                        <span className="font-bold text-slate-800">{t.barberman?.name || "-"}</span>
+                      </td>
+                      <td className="py-3 px-3 min-w-[220px]">
+                        <div className="flex flex-wrap gap-1">
+                          {(t.items || []).map((it: any, iIdx: number) => {
+                            const isService = it.itemType === "SERVICE";
+                            return (
+                              <span
+                                key={iIdx}
+                                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-[11px] font-medium ${
+                                  isService
+                                    ? "bg-blue-50 text-blue-800 border-blue-200"
+                                    : "bg-emerald-50 text-emerald-800 border-emerald-200"
+                                }`}
+                              >
+                                <span>{isService ? "✂️" : "📦"}</span>
+                                <span className="font-semibold">{it.name}</span>
+                                {it.quantity > 1 && <span className="text-[10px] font-bold">x{it.quantity}</span>}
+                                <span className="text-[10px] opacity-75">({formatRupiah(it.subtotal)})</span>
+                              </span>
+                            );
+                          })}
+                        </div>
+                      </td>
+                      <td className="py-3 px-3 text-center">
+                        {isQR ? (
+                          <span className="px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 border border-purple-200 font-bold text-[10px]">
+                            📱 {t.paymentMethod}
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold text-[10px]">
+                            💵 {t.paymentMethod || "CASH"}
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3 px-3 text-right">
+                        {t.discount > 0 ? (
+                          <span className="text-rose-600 font-bold text-xs">
+                            -{formatRupiah(t.discount)}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">-</span>
+                        )}
+                      </td>
+                      <td className="py-3 px-3 text-right font-black text-blue-700 text-sm whitespace-nowrap">
+                        {formatRupiah(t.grandTotal)}
+                      </td>
                     </tr>
                   );
                 })
@@ -327,10 +383,10 @@ export default function LaporanHarianPage() {
             </tbody>
             <tfoot>
               <tr className="border-t-2 border-slate-200 bg-slate-50 font-bold text-xs">
-                <td colSpan={6} className="py-3 px-3 text-blue-700 uppercase">
+                <td colSpan={7} className="py-3 px-3 text-blue-700 uppercase">
                   TOTAL KASIR HARI INI
                 </td>
-                <td className="py-3 px-3 text-right text-blue-700 font-black text-sm">
+                <td className="py-3 px-3 text-right text-blue-700 font-black text-sm whitespace-nowrap">
                   {formatRupiah(report?.totalOmzet || 0)}
                 </td>
               </tr>
