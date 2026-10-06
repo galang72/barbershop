@@ -149,6 +149,7 @@ export default function TransferPage() {
         throw new Error(json.error || "Gagal membuat transfer");
       }
 
+      _transferClientCache = null;
       setModalOpen(false);
       await fetchTransfers();
       // Open print slip preview for convenience

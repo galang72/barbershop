@@ -2,6 +2,7 @@ import prisma from "./prisma";
 import bcrypt from "bcryptjs";
 import { format, startOfDay, endOfDay, subDays, startOfMonth, endOfMonth, startOfYear, endOfYear } from "date-fns";
 import { getWIBDayRange, getWIBMonthRange, getTodayDateWIB } from "./utils";
+import { invalidateCache } from "./cache";
 import fs from "fs";
 import path from "path";
 
@@ -345,6 +346,12 @@ async function _doEnsureSchema(): Promise<void> {
     try {
       await prisma.$executeRawUnsafe(`ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "stock_telkom" INTEGER NOT NULL DEFAULT 0`);
       await prisma.$executeRawUnsafe(`ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "stock_suta" INTEGER NOT NULL DEFAULT 0`);
+      await prisma.$executeRawUnsafe(`
+        UPDATE "products"
+        SET "stock_telkom" = CEIL("stock"::numeric / 2),
+            "stock_suta" = FLOOR("stock"::numeric / 2)
+        WHERE ("stock_telkom" = 0 AND "stock_suta" = 0 AND "stock" > 0)
+      `);
     } catch {}
     try {
       await prisma.$executeRawUnsafe(`
@@ -1701,24 +1708,33 @@ export async function getProducts(categoryId?: string) {
              WHERE p.is_active = true ORDER BY p.name ASC`,
         ...(categoryId ? [categoryId] : [])
       ).catch(() => [] as any[]);
-      return rawProds.map((p: any) => ({
-        id: p.id,
-        sku: p.sku,
-        name: p.name,
-        categoryId: p.category_id,
-        costPrice: p.cost_price,
-        sellingPrice: p.selling_price,
-        stock: p.stock,
-        stockTelkom: p.stockTelkom != null ? Number(p.stockTelkom) : (p.stock_telkom != null ? Number(p.stock_telkom) : 0),
-        stockSuta: p.stockSuta != null ? Number(p.stockSuta) : (p.stock_suta != null ? Number(p.stock_suta) : 0),
-        minStock: p.min_stock,
-        supplier: p.supplier,
-        unit: p.unit,
-        isActive: p.is_active,
-        createdAt: p.created_at,
-        updatedAt: p.updated_at,
-        category: p.cat_id ? { id: p.cat_id, name: p.cat_name, slug: p.cat_slug } : null,
-      }));
+      return rawProds.map((p: any) => {
+        let sTelkom = p.stockTelkom != null ? Number(p.stockTelkom) : (p.stock_telkom != null ? Number(p.stock_telkom) : 0);
+        let sSuta = p.stockSuta != null ? Number(p.stockSuta) : (p.stock_suta != null ? Number(p.stock_suta) : 0);
+        const total = Number(p.stock || 0);
+        if (sTelkom === 0 && sSuta === 0 && total > 0) {
+          sTelkom = Math.ceil(total / 2);
+          sSuta = Math.floor(total / 2);
+        }
+        return {
+          id: p.id,
+          sku: p.sku,
+          name: p.name,
+          categoryId: p.category_id,
+          costPrice: p.cost_price,
+          sellingPrice: p.selling_price,
+          stock: sTelkom + sSuta,
+          stockTelkom: sTelkom,
+          stockSuta: sSuta,
+          minStock: p.min_stock,
+          supplier: p.supplier,
+          unit: p.unit,
+          isActive: p.is_active,
+          createdAt: p.created_at,
+          updatedAt: p.updated_at,
+          category: p.cat_id ? { id: p.cat_id, name: p.cat_name, slug: p.cat_slug } : null,
+        };
+      });
     },
     () => {
       let list = memoryDB.products.filter((p) => p.isActive);
@@ -1743,10 +1759,38 @@ export async function getProductCategories() {
 export async function createProduct(data: any) {
   return safeDb(
     async () => {
-      return await prisma.product.create({ data });
+      const { stockTelkom: sT, stockSuta: sS, ...prismaData } = data;
+      const initialStock = Number(prismaData.stock ?? 0);
+      const stockTelkom = sT !== undefined ? Number(sT) : Math.ceil(initialStock / 2);
+      const stockSuta = sS !== undefined ? Number(sS) : Math.floor(initialStock / 2);
+      const totalStock = stockTelkom + stockSuta;
+      prismaData.stock = totalStock;
+
+      const created = await prisma.product.create({ data: prismaData });
+      await prisma.$executeRawUnsafe(
+        `UPDATE "products" SET "stock_telkom" = $1, "stock_suta" = $2, "stock" = $3 WHERE "id" = $4`,
+        stockTelkom, stockSuta, totalStock, created.id
+      ).catch(() => {});
+      await invalidateCache("products:");
+      return {
+        ...created,
+        stockTelkom,
+        stockSuta,
+        stock: totalStock,
+      };
     },
     () => {
-      const newP = { id: `prd_${Date.now()}`, isActive: true, createdAt: new Date(), ...data };
+      const stockTelkom = data.stockTelkom !== undefined ? Number(data.stockTelkom) : Math.ceil((Number(data.stock) || 0) / 2);
+      const stockSuta = data.stockSuta !== undefined ? Number(data.stockSuta) : Math.floor((Number(data.stock) || 0) / 2);
+      const newP = {
+        id: `prd_${Date.now()}`,
+        isActive: true,
+        createdAt: new Date(),
+        ...data,
+        stockTelkom,
+        stockSuta,
+        stock: stockTelkom + stockSuta,
+      };
       memoryDB.products.push(newP);
       return newP;
     },
@@ -1757,7 +1801,32 @@ export async function createProduct(data: any) {
 export async function updateProduct(id: string, data: any) {
   return safeDb(
     async () => {
-      return await prisma.product.update({ where: { id }, data });
+      const { stockTelkom: sT, stockSuta: sS, ...prismaData } = data;
+      const updated = await prisma.product.update({ where: { id }, data: prismaData });
+
+      if (sT !== undefined || sS !== undefined || data.stock !== undefined) {
+        const rows = await prisma.$queryRawUnsafe<any[]>(
+          `SELECT stock_telkom, stock_suta, stock FROM "products" WHERE id = $1`, id
+        ).catch(() => [] as any[]);
+        const curr = rows[0] || { stock_telkom: 0, stock_suta: 0, stock: 0 };
+        let stockTelkom = sT !== undefined ? Number(sT) : Number(curr.stock_telkom ?? 0);
+        let stockSuta = sS !== undefined ? Number(sS) : Number(curr.stock_suta ?? 0);
+        if (sT === undefined && sS === undefined && data.stock !== undefined) {
+          const diff = Number(data.stock) - (stockTelkom + stockSuta);
+          stockTelkom += Math.ceil(diff / 2);
+          stockSuta += Math.floor(diff / 2);
+        }
+        const totalStock = stockTelkom + stockSuta;
+        await prisma.$executeRawUnsafe(
+          `UPDATE "products" SET "stock_telkom" = $1, "stock_suta" = $2, "stock" = $3 WHERE "id" = $4`,
+          stockTelkom, stockSuta, totalStock, id
+        ).catch(() => {});
+        updated.stock = totalStock;
+        (updated as any).stockTelkom = stockTelkom;
+        (updated as any).stockSuta = stockSuta;
+      }
+      await invalidateCache("products:");
+      return updated;
     },
     () => {
       const idx = memoryDB.products.findIndex((p) => p.id === id);
@@ -1771,54 +1840,127 @@ export async function updateProduct(id: string, data: any) {
   );
 }
 
-export async function adjustStock(productId: string, type: "IN" | "OUT" | "ADJUSTMENT", quantity: number, reason: string, notes?: string) {
+export async function adjustStock(
+  productId: string,
+  type: "IN" | "OUT" | "ADJUSTMENT",
+  quantity: number,
+  reason: string,
+  notes?: string,
+  branch?: string
+) {
   return safeDb(
     async () => {
-      const product = await prisma.product.findUniqueOrThrow({ where: { id: productId } });
-      const prevStock = product.stock;
-      let newStock = prevStock;
-      if (type === "IN") newStock += quantity;
-      else if (type === "OUT") newStock = Math.max(0, prevStock - quantity);
-      else if (type === "ADJUSTMENT") newStock = quantity;
+      const rows = await prisma.$queryRawUnsafe<any[]>(
+        `SELECT id, stock, stock_telkom, stock_suta FROM "products" WHERE id = $1`,
+        productId
+      );
+      const product = rows[0];
+      if (!product) throw new Error("Produk tidak ditemukan di database.");
 
-      const [updatedProduct, movement] = await prisma.$transaction([
-        prisma.product.update({
-          where: { id: productId },
-          data: { stock: newStock },
-        }),
-        prisma.stockMovement.create({
-          data: {
-            productId,
-            type,
-            quantity,
-            previousStock: prevStock,
-            currentStock: newStock,
-            reason,
-            notes,
-          },
-        }),
-      ]);
+      let stockTelkom = Number(product.stock_telkom ?? 0);
+      let stockSuta = Number(product.stock_suta ?? 0);
+      const prevTotal = stockTelkom + stockSuta;
 
-      return { product: updatedProduct, movement };
+      const isTelkom = branch && branch.toLowerCase().includes("telkom");
+      const isSuta = branch && branch.toLowerCase().includes("suta");
+
+      if (isTelkom) {
+        if (type === "IN") stockTelkom += quantity;
+        else if (type === "OUT") stockTelkom = Math.max(0, stockTelkom - quantity);
+        else if (type === "ADJUSTMENT") stockTelkom = quantity;
+      } else if (isSuta) {
+        if (type === "IN") stockSuta += quantity;
+        else if (type === "OUT") stockSuta = Math.max(0, stockSuta - quantity);
+        else if (type === "ADJUSTMENT") stockSuta = quantity;
+      } else {
+        if (type === "IN") {
+          stockTelkom += Math.ceil(quantity / 2);
+          stockSuta += Math.floor(quantity / 2);
+        } else if (type === "OUT") {
+          const outTelkom = Math.min(stockTelkom, Math.ceil(quantity / 2));
+          const rem = quantity - outTelkom;
+          stockTelkom = Math.max(0, stockTelkom - outTelkom);
+          stockSuta = Math.max(0, stockSuta - rem);
+        } else if (type === "ADJUSTMENT") {
+          stockTelkom = Math.ceil(quantity / 2);
+          stockSuta = Math.floor(quantity / 2);
+        }
+      }
+
+      const newTotal = stockTelkom + stockSuta;
+
+      await prisma.$executeRawUnsafe(
+        `UPDATE "products" SET "stock_telkom" = $1, "stock_suta" = $2, "stock" = $3, "updated_at" = NOW() WHERE "id" = $4`,
+        stockTelkom, stockSuta, newTotal, productId
+      );
+
+      const movement = await prisma.stockMovement.create({
+        data: {
+          productId,
+          type,
+          quantity,
+          previousStock: prevTotal,
+          currentStock: newTotal,
+          reason: branch ? `[${branch}] ${reason}` : reason,
+          notes,
+        },
+      }).catch(() => null);
+
+      await invalidateCache("products:");
+
+      return {
+        product: {
+          ...product,
+          stock: newTotal,
+          stockTelkom,
+          stockSuta,
+        },
+        movement,
+      };
     },
     () => {
       const p = memoryDB.products.find((prod) => prod.id === productId);
       if (!p) throw new Error("Produk tidak ditemukan");
-      const prevStock = p.stock;
-      let newStock = prevStock;
-      if (type === "IN") newStock += quantity;
-      else if (type === "OUT") newStock = Math.max(0, prevStock - quantity);
-      else if (type === "ADJUSTMENT") newStock = quantity;
+      let stockTelkom = Number(p.stockTelkom ?? Math.ceil(p.stock / 2));
+      let stockSuta = Number(p.stockSuta ?? Math.floor(p.stock / 2));
+      const prevTotal = stockTelkom + stockSuta;
 
-      p.stock = newStock;
+      const isTelkom = branch && branch.toLowerCase().includes("telkom");
+      const isSuta = branch && branch.toLowerCase().includes("suta");
+
+      if (isTelkom) {
+        if (type === "IN") stockTelkom += quantity;
+        else if (type === "OUT") stockTelkom = Math.max(0, stockTelkom - quantity);
+        else if (type === "ADJUSTMENT") stockTelkom = quantity;
+      } else if (isSuta) {
+        if (type === "IN") stockSuta += quantity;
+        else if (type === "OUT") stockSuta = Math.max(0, stockSuta - quantity);
+        else if (type === "ADJUSTMENT") stockSuta = quantity;
+      } else {
+        if (type === "IN") {
+          stockTelkom += Math.ceil(quantity / 2);
+          stockSuta += Math.floor(quantity / 2);
+        } else if (type === "OUT") {
+          stockTelkom = Math.max(0, stockTelkom - Math.ceil(quantity / 2));
+          stockSuta = Math.max(0, stockSuta - Math.floor(quantity / 2));
+        } else if (type === "ADJUSTMENT") {
+          stockTelkom = Math.ceil(quantity / 2);
+          stockSuta = Math.floor(quantity / 2);
+        }
+      }
+
+      p.stockTelkom = stockTelkom;
+      p.stockSuta = stockSuta;
+      p.stock = stockTelkom + stockSuta;
+
       const movement = {
         id: `stk_${Date.now()}`,
         productId,
         type,
         quantity,
-        previousStock: prevStock,
-        currentStock: newStock,
-        reason,
+        previousStock: prevTotal,
+        currentStock: p.stock,
+        reason: branch ? `[${branch}] ${reason}` : reason,
         notes,
         createdAt: new Date(),
       };
@@ -1955,6 +2097,8 @@ export async function createProductTransfer(input: CreateTransferInput) {
       branch: tlkFrom ? "Telkom" : "Suta",
       actor: createdByValue,
     });
+
+    await invalidateCache("products:");
 
     return {
       id: transferId,

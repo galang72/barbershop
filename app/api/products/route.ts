@@ -38,6 +38,8 @@ export async function POST(req: NextRequest) {
       costPrice: Number(body.costPrice || 0),
       sellingPrice: Number(body.sellingPrice),
       stock: Number(body.stock || 0),
+      stockTelkom: body.stockTelkom !== undefined ? Number(body.stockTelkom) : undefined,
+      stockSuta: body.stockSuta !== undefined ? Number(body.stockSuta) : undefined,
       minStock: Number(body.minStock || 5),
       supplier: body.supplier || null,
       unit: body.unit || "pcs",

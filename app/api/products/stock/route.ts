@@ -6,13 +6,13 @@ export const dynamic = "force-dynamic";
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { productId, type, quantity, reason, notes } = body;
+    const { productId, type, quantity, reason, notes, branch } = body;
 
     if (!productId || !type || quantity === undefined || !reason) {
       return NextResponse.json({ error: "Data mutasi stok tidak lengkap" }, { status: 400 });
     }
 
-    const result = await adjustStock(productId, type, Number(quantity), reason, notes);
+    const result = await adjustStock(productId, type, Number(quantity), reason, notes, branch);
     return NextResponse.json({
       success: true,
       message: "Stok berhasil disesuaikan",

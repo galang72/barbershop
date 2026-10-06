@@ -41,6 +41,8 @@ export default function ProdukPage() {
   const [costPrice, setCostPrice] = useState(0);
   const [sellingPrice, setSellingPrice] = useState(0);
   const [stock, setStock] = useState(0);
+  const [stockTelkom, setStockTelkom] = useState(5);
+  const [stockSuta, setStockSuta] = useState(5);
   const [minStock, setMinStock] = useState(5);
   const [supplier, setSupplier] = useState("");
   const [unit, setUnit] = useState("pcs");
@@ -51,6 +53,7 @@ export default function ProdukPage() {
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
   const [adjustType, setAdjustType] = useState<"IN" | "OUT" | "ADJUSTMENT">("IN");
   const [adjustQty, setAdjustQty] = useState(10);
+  const [adjustBranch, setAdjustBranch] = useState("Telkom");
   const [adjustReason, setAdjustReason] = useState("Restock Supplier");
   const [adjustNotes, setAdjustNotes] = useState("");
   const [submittingStock, setSubmittingStock] = useState(false);
@@ -91,6 +94,8 @@ export default function ProdukPage() {
     setName("");
     setCostPrice(30000);
     setSellingPrice(50000);
+    setStockTelkom(5);
+    setStockSuta(5);
     setStock(10);
     setMinStock(5);
     setSupplier("");
@@ -105,7 +110,11 @@ export default function ProdukPage() {
     setCategoryId(p.categoryId || "");
     setCostPrice(p.costPrice);
     setSellingPrice(p.sellingPrice);
-    setStock(p.stock);
+    const sT = Number(p.stockTelkom ?? 0);
+    const sS = Number(p.stockSuta ?? 0);
+    setStockTelkom(sT);
+    setStockSuta(sS);
+    setStock(sT + sS);
     setMinStock(p.minStock);
     setSupplier(p.supplier || "");
     setUnit(p.unit || "pcs");
@@ -116,6 +125,7 @@ export default function ProdukPage() {
     setSelectedProduct(p);
     setAdjustType("IN");
     setAdjustQty(10);
+    setAdjustBranch("Telkom");
     setAdjustReason("Restock Supplier");
     setAdjustNotes("");
     setStockModalOpen(true);
@@ -130,42 +140,36 @@ export default function ProdukPage() {
 
     setSavingProduct(true);
     try {
+      const payload = {
+        sku: sku.trim(),
+        name: name.trim(),
+        categoryId,
+        costPrice,
+        sellingPrice,
+        stock: stockTelkom + stockSuta,
+        stockTelkom,
+        stockSuta,
+        minStock,
+        supplier,
+        unit,
+      };
+
       if (editId) {
         await fetch("/api/products", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            id: editId,
-            sku,
-            name,
-            categoryId,
-            costPrice,
-            sellingPrice,
-            stock,
-            minStock,
-            supplier,
-            unit,
-          }),
+          body: JSON.stringify({ id: editId, ...payload }),
         });
       } else {
         await fetch("/api/products", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sku,
-            name,
-            categoryId,
-            costPrice,
-            sellingPrice,
-            stock,
-            minStock,
-            supplier,
-            unit,
-          }),
+          body: JSON.stringify(payload),
         });
       }
       setAddModalOpen(false);
-      fetchProducts();
+      _produkClientCache = null;
+      fetchProducts(true);
     } catch (e) {
       console.error(e);
       alert("Gagal menyimpan data produk.");
@@ -192,6 +196,7 @@ export default function ProdukPage() {
           quantity: adjustQty,
           reason: adjustReason,
           notes: adjustNotes,
+          branch: adjustBranch,
         }),
       });
 
@@ -201,7 +206,8 @@ export default function ProdukPage() {
       }
 
       setStockModalOpen(false);
-      fetchProducts();
+      _produkClientCache = null;
+      fetchProducts(true);
     } catch (err: any) {
       alert(err.message || "Gagal menyesuaikan stok produk.");
     } finally {
@@ -506,6 +512,52 @@ export default function ProdukPage() {
 
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1">
+              Pilih Cabang Mutasi Stok <span className="text-rose-500 font-bold">*</span>
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => setAdjustBranch("Telkom")}
+                className={`py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1 cursor-pointer border ${
+                  adjustBranch === "Telkom"
+                    ? "bg-blue-600 text-white border-blue-600 shadow-sm"
+                    : "bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200"
+                }`}
+              >
+                <span>Cabang Telkom</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setAdjustBranch("Suta")}
+                className={`py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1 cursor-pointer border ${
+                  adjustBranch === "Suta"
+                    ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
+                    : "bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200"
+                }`}
+              >
+                <span>Cabang Suta</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setAdjustBranch("All")}
+                className={`py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1 cursor-pointer border ${
+                  adjustBranch === "All"
+                    ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
+                    : "bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200"
+                }`}
+              >
+                <span>Semua (Bagi Rata)</span>
+              </button>
+            </div>
+            {selectedProduct && (
+              <p className="text-[11px] text-slate-500 mt-1.5 bg-slate-50 border border-slate-200 rounded-lg p-2">
+                Stok saat ini: Telkom: <strong className="text-blue-700">{selectedProduct.stockTelkom ?? 0}</strong> | Suta: <strong className="text-indigo-700">{selectedProduct.stockSuta ?? 0}</strong> | Total: <strong className="text-slate-900">{(selectedProduct.stockTelkom ?? 0) + (selectedProduct.stockSuta ?? 0)} {selectedProduct.unit || 'pcs'}</strong>
+              </p>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">
               {adjustType === "ADJUSTMENT" ? "Set Total Stok Baru Menjadi:" : "Jumlah Unit:"}
             </label>
             <input
@@ -642,23 +694,65 @@ export default function ProdukPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Stok Awal
-              </label>
-              <input
-                type="number"
-                min="0"
-                value={stock}
-                onChange={(e) => setStock(Number(e.target.value))}
-                className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-900 font-medium focus:outline-none focus:bg-white focus:border-blue-600"
-              />
+          {/* ALOKASI STOK PER CABANG */}
+          <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+            <div className="text-xs font-bold text-slate-800 flex items-center justify-between">
+              <span>Alokasi Stok Fisik Per Cabang</span>
+              <span className="text-[11px] text-slate-500 font-normal">Total: <strong>{stockTelkom + stockSuta} {unit}</strong></span>
             </div>
+            <div className="grid grid-cols-3 gap-2.5">
+              <div>
+                <label className="block text-[11px] font-semibold text-blue-700 mb-1">
+                  Stok Telkom
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  value={stockTelkom}
+                  onChange={(e) => {
+                    const val = Number(e.target.value);
+                    setStockTelkom(val);
+                    setStock(val + stockSuta);
+                  }}
+                  className="w-full px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs text-blue-700 font-bold focus:outline-none focus:border-blue-600"
+                />
+              </div>
 
+              <div>
+                <label className="block text-[11px] font-semibold text-indigo-700 mb-1">
+                  Stok Suta
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  value={stockSuta}
+                  onChange={(e) => {
+                    const val = Number(e.target.value);
+                    setStockSuta(val);
+                    setStock(stockTelkom + val);
+                  }}
+                  className="w-full px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs text-indigo-700 font-bold focus:outline-none focus:border-indigo-600"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                  Total Stok
+                </label>
+                <input
+                  type="number"
+                  readOnly
+                  value={stockTelkom + stockSuta}
+                  className="w-full px-3 py-1.5 rounded-lg bg-slate-100 border border-slate-200 text-xs text-slate-900 font-black cursor-not-allowed"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">
-                Min. Stok
+                Min. Stok Alert
               </label>
               <input
                 type="number"
