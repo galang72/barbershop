@@ -3319,7 +3319,19 @@ export async function getCashLedger(branch?: string) {
       }).catch(() => []),
       prisma.shopSetting.findFirst().catch(() => null),
     ]);
-    rawList = cashList;
+    const combinedList = [...cashList];
+    if (memoryDB.cashTransactions && memoryDB.cashTransactions.length > 0) {
+      const existingIds = new Set(cashList.map((c: any) => c.id));
+      for (const m of memoryDB.cashTransactions) {
+        if (!existingIds.has(m.id)) {
+          if (!branch || branch === "All" || m.branch === branch || m.branch === "All" || !m.branch) {
+            combinedList.unshift(m);
+            existingIds.add(m.id);
+          }
+        }
+      }
+    }
+    rawList = combinedList;
     initialFloatTelkom = (settings as any)?.initialCashFloatTelkom ?? settings?.initialCashFloat ?? 100000;
     initialFloatSuta = (settings as any)?.initialCashFloatSuta ?? settings?.initialCashFloat ?? 100000;
   } else {
@@ -3465,41 +3477,69 @@ export async function createCashEntry(data: {
 }) {
   await initMemoryDBIfNeeded();
   const entry = {
-    id: `csh_${Date.now()}`,
+    id: `csh_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
     type: data.type,
     category: data.category,
-    amount: data.amount,
+    amount: Number(data.amount) || 0,
     description: data.description,
     source: data.source || "MANUAL",
     branch: data.branch || "Telkom",
     createdAt: new Date(),
   };
+
+  if (!memoryDB.cashTransactions) memoryDB.cashTransactions = [];
   memoryDB.cashTransactions.unshift(entry);
 
-  await recordActivity({
-    action: "CASH_MANAGEMENT",
-    description: `Catat kas ${data.type === "CASH_IN" ? "Masuk" : "Keluar"} Rp ${data.amount.toLocaleString("id-ID")} (${data.category} - ${data.description}) di Cabang ${entry.branch}`,
-    branch: entry.branch,
-    actor: "Admin",
-  });
+  try {
+    await recordActivity({
+      action: "CASH_MANAGEMENT",
+      description: `Catat kas ${data.type === "CASH_IN" ? "Masuk" : "Keluar"} Rp ${Number(data.amount).toLocaleString("id-ID")} (${data.category} - ${data.description}) di Cabang ${entry.branch}`,
+      branch: entry.branch,
+      actor: "Admin",
+    });
+  } catch {}
 
   // DUAL-WRITE ke Supabase
-  try {
-    if (process.env.DATABASE_URL && !process.env.DATABASE_URL.includes("[YOUR-")) {
-      await prisma.$executeRawUnsafe(
-        `INSERT INTO "cash_transactions" ("id","type","category","amount","description","source","branch","created_at")
-         VALUES ($1,$2,$3,$4,$5,$6,$7,NOW())
-         ON CONFLICT ("id") DO NOTHING`,
-        entry.id,
-        entry.type,
-        entry.category,
-        entry.amount,
-        entry.description,
-        entry.source,
-        entry.branch
-      ).catch((e: any) => console.warn("⚠️ [createCashEntry] Prisma insert:", e?.message));
+  const dbUrl = process.env.DATABASE_URL || "";
+  const hasPersistentDb = !!dbUrl && !dbUrl.includes("[YOUR-") && !dbUrl.includes("placeholder");
+
+  if (hasPersistentDb) {
+    try {
+      // 1. Coba native Prisma create (menangani enum CashType secara otomatis)
+      await prisma.cashTransaction.create({
+        data: {
+          id: entry.id,
+          type: entry.type as any,
+          category: entry.category,
+          amount: entry.amount,
+          description: entry.description,
+          source: entry.source,
+          branch: entry.branch,
+          createdAt: entry.createdAt,
+        },
+      });
+      console.log(`✅ [createCashEntry] Tersimpan ke Supabase: ${entry.id} (${entry.type} ${entry.amount})`);
+    } catch (createErr: any) {
+      console.warn("⚠️ [createCashEntry] prisma.create failed, fallback raw SQL:", createErr?.message);
+      try {
+        await prisma.$executeRawUnsafe(
+          `INSERT INTO "cash_transactions" ("id","type","category","amount","description","source","branch","created_at")
+           VALUES ($1, $2::"CashType", $3, $4, $5, $6, $7, NOW())
+           ON CONFLICT ("id") DO NOTHING`,
+          entry.id,
+          entry.type,
+          entry.category,
+          entry.amount,
+          entry.description,
+          entry.source,
+          entry.branch
+        );
+        console.log(`✅ [createCashEntry] Fallback raw SQL berhasil: ${entry.id}`);
+      } catch (rawErr: any) {
+        console.error("❌ [createCashEntry] Gagal simpan ke Supabase:", rawErr?.message);
+      }
     }
-  } catch {}
+  }
 
   saveLocalDB();
   return entry;

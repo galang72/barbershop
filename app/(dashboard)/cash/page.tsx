@@ -42,6 +42,7 @@ export default function CashManagementPage() {
   // Modal State
   const [modalOpen, setModalOpen] = useState(false);
   const [entryType, setEntryType] = useState<"CASH_IN" | "CASH_OUT">("CASH_IN");
+  const [selectedBranch, setSelectedBranch] = useState<string>("Telkom");
   const [category, setCategory] = useState("Modal Masuk");
   const [amount, setAmount] = useState(100000);
   const [description, setDescription] = useState("");
@@ -53,7 +54,8 @@ export default function CashManagementPage() {
   const fetchCash = async () => {
     if (!_cashClientCache) setLoading(true);
     try {
-      const res = await fetch("/api/cash");
+      _cashClientCache = null;
+      const res = await fetch(`/api/cash?t=${Date.now()}`, { cache: "no-store", headers: { "Pragma": "no-cache", "Cache-Control": "no-cache" } });
       const json = await res.json();
       _cashClientCache = json;
       setCashData(json);
@@ -75,7 +77,12 @@ export default function CashManagementPage() {
     fetchCash();
     fetch("/api/auth/me")
       .then((r) => r.json())
-      .then((d) => { if (d.authenticated && d.user) setSession(d.user); })
+      .then((d) => {
+        if (d.authenticated && d.user) {
+          setSession(d.user);
+          if (d.user.branch && d.user.branch !== "All") setSelectedBranch(d.user.branch);
+        }
+      })
       .catch(() => {});
   }, []);
 

@@ -27,14 +27,6 @@ export async function POST(req: NextRequest) {
   try {
     const session = await getAdminSession();
 
-    // OWNER TIDAK MEMBUKA ATAU MENJALANKAN KASIR
-    if (session?.role === "OWNER") {
-      return NextResponse.json(
-        { error: "Akses Ditolak: Owner hanya memantau laporan cash management dari kedua cabang, tidak melakukan input kas operasional." },
-        { status: 403 }
-      );
-    }
-
     const body = await req.json();
     const { type, category, amount, description, source } = body;
 
@@ -42,13 +34,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Lengkapi data kas (Tipe, Kategori, Nominal, Keterangan)" }, { status: 400 });
     }
 
-    const branch = session?.role === "ADMIN_SUTA" ? "Suta" : "Telkom";
+    const branch = body.branch || (session?.role === "ADMIN_SUTA" ? "Suta" : "Telkom");
 
     const created = await createCashEntry({
       type,
       category,
       amount: Number(amount),
-      description,
+      description: String(description).trim(),
       source: source || "MANUAL",
       branch,
     });
@@ -57,8 +49,12 @@ export async function POST(req: NextRequest) {
     invalidateCache("dashboard");
     invalidateCache("reports");
 
-    return NextResponse.json(created);
+    return NextResponse.json({
+      success: true,
+      data: created,
+    });
   } catch (err: any) {
+    console.error("❌ [API /api/cash POST] error:", err?.message);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
