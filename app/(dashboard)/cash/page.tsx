@@ -89,7 +89,7 @@ export default function CashManagementPage() {
   const openCashInModal = () => {
     setEntryType("CASH_IN");
     setCategory("Modal Masuk");
-    setAmount(100000);
+    setAmount(0);
     setDescription("");
     setModalOpen(true);
   };
@@ -97,7 +97,7 @@ export default function CashManagementPage() {
   const openCashOutModal = () => {
     setEntryType("CASH_OUT");
     setCategory("Operasional Toko");
-    setAmount(50000);
+    setAmount(0);
     setDescription("");
     setModalOpen(true);
   };
@@ -120,6 +120,7 @@ export default function CashManagementPage() {
           amount,
           description: description.trim(),
           source: "MANUAL",
+          branch: selectedBranch || "Telkom",
         }),
       });
 
@@ -207,28 +208,19 @@ export default function CashManagementPage() {
             <FileSpreadsheet className="w-3.5 h-3.5 mr-1.5 text-emerald-600" />
             Excel
           </Button>
-          {!isOwner && (
-            <>
-              <Button
-                onClick={openCashInModal}
-                variant="primary"
-                size="sm"
-                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-md shadow-emerald-500/20"
-              >
-                <ArrowDownLeft className="w-4 h-4 mr-1.5" />
-                Cash In (+)
-              </Button>
-              <Button onClick={openCashOutModal} variant="danger" size="sm" className="font-bold">
-                <ArrowUpRight className="w-4 h-4 mr-1.5" />
-                Cash Out (-)
-              </Button>
-            </>
-          )}
-          {isOwner && (
-            <span className="text-xs text-slate-400 italic bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
-              👁 Mode Monitoring
-            </span>
-          )}
+          <Button
+            onClick={openCashInModal}
+            variant="primary"
+            size="sm"
+            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-md shadow-emerald-500/20"
+          >
+            <ArrowDownLeft className="w-4 h-4 mr-1.5" />
+            Cash In (+)
+          </Button>
+          <Button onClick={openCashOutModal} variant="danger" size="sm" className="font-bold">
+            <ArrowUpRight className="w-4 h-4 mr-1.5" />
+            Cash Out (-)
+          </Button>
         </div>
       </div>
 
@@ -504,6 +496,21 @@ export default function CashManagementPage() {
         maxWidth="max-w-md"
       >
         <form onSubmit={handleSubmit} className="space-y-4">
+          {isOwner && (
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Pilih Cabang <span className="text-rose-500 font-bold">*</span>
+              </label>
+              <select
+                value={selectedBranch}
+                onChange={(e) => setSelectedBranch(e.target.value)}
+                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-800 focus:outline-none focus:bg-white focus:border-blue-600 mb-2"
+              >
+                <option value="Telkom">Cabang Telkom</option>
+                <option value="Suta">Cabang Suta</option>
+              </select>
+            </div>
+          )}
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1">
               Kategori
@@ -537,10 +544,11 @@ export default function CashManagementPage() {
             <input
               type="number"
               required
-              min="1000"
-              step="1000"
-              value={amount}
-              onChange={(e) => setAmount(Number(e.target.value))}
+              min="1"
+              step="any"
+              value={amount === 0 ? "" : amount}
+              onChange={(e) => setAmount(Number(e.target.value) || 0)}
+              placeholder="Masukkan nominal, misal: 500"
               className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-900 font-bold focus:outline-none focus:bg-white focus:border-blue-600"
             />
           </div>
