@@ -116,18 +116,13 @@ export default function CashManagementPage() {
         }),
       });
 
-<<<<<<< HEAD
-      if (!res.ok) throw new Error("Gagal menyimpan transaksi kas");
-
-      setModalOpen(false);
-=======
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Gagal menyimpan transaksi kas");
 
       setModalOpen(false);
       setSuccessMsg(`Transaksi kas ${entryType === "CASH_IN" ? "Masuk" : "Keluar"} (${formatRupiah(amount)}) berhasil disimpan ke database!`);
       setTimeout(() => setSuccessMsg(null), 4000);
->>>>>>> ffd6a58 (fix: perbaiki fitur pengeluaran expenses dan integrasi multi-cabang)
+
       fetchCash();
     } catch (err: any) {
       alert(err.message);
@@ -175,8 +170,6 @@ export default function CashManagementPage() {
 
   return (
     <div className="space-y-6">
-<<<<<<< HEAD
-=======
       {/* NOTIFIKASI SUKSES */}
       {successMsg && (
         <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-300 text-emerald-900 flex items-center justify-between shadow-sm animate-in fade-in">
@@ -190,7 +183,7 @@ export default function CashManagementPage() {
         </div>
       )}
 
->>>>>>> ffd6a58 (fix: perbaiki fitur pengeluaran expenses dan integrasi multi-cabang)
+
       {/* HEADER */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-slate-200">
         <div>
