@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminSession } from "@/lib/auth";
-import { memoryDB, initMemoryDBIfNeeded, saveLocalDB, getExpenses } from "@/lib/db";
+import { memoryDB, initMemoryDBIfNeeded, saveLocalDB } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -40,16 +40,7 @@ export async function GET(req: NextRequest) {
 
     const unreadCount = reports.filter((r: any) => !r.isRead && session.role !== "ADMIN_TELKOM" && session.role !== "ADMIN_SUTA").length;
 
-    const [telkomExps, sutaExps] = await Promise.all([
-      getExpenses({ branch: "Telkom" }).catch(() => []),
-      getExpenses({ branch: "Suta" }).catch(() => []),
-    ]);
-    const branchExpenses = {
-      telkom: telkomExps.reduce((s: number, e: any) => s + (e.amount || 0), 0),
-      suta: sutaExps.reduce((s: number, e: any) => s + (e.amount || 0), 0),
-    };
-
-    return NextResponse.json({ reports, unreadCount, branchExpenses }, {
+    return NextResponse.json({ reports, unreadCount }, {
       headers: {
         "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
         "Pragma": "no-cache",

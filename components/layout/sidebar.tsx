@@ -26,7 +26,6 @@ import {
   Shield,
   Send,
   Eye,
-  Receipt,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useUser } from "@/lib/user-context";
@@ -40,7 +39,6 @@ export function Sidebar({ isOpenMobile, onCloseMobile }: SidebarProps) {
   const pathname = usePathname();
   const [isReportsOpen, setIsReportsOpen] = useState(pathname.startsWith("/laporan"));
   const { user } = useUser();
-
 
   const isOwner = user?.role === "OWNER";
   const isAdmin = user?.role === "ADMIN_TELKOM" || user?.role === "ADMIN_SUTA";
@@ -58,10 +56,8 @@ export function Sidebar({ isOpenMobile, onCloseMobile }: SidebarProps) {
     { label: "Transfer Produk", href: "/transfer", icon: ArrowLeftRight, badge: "Cabang" },
     { label: "Penjualan Produk", href: "/penjualan", icon: ShoppingBag },
     { label: "Cash Management", href: "/cash", icon: DollarSign },
-    { label: "Pengeluaran", href: "/pengeluaran", icon: Receipt },
     { label: "Aktivitas", href: "/aktivitas", icon: Shield },
   ];
-
 
   // ── MENU ADMIN: Operasional Kasir & Cabang ────────────────────────
   const adminNavItems = [
@@ -76,7 +72,6 @@ export function Sidebar({ isOpenMobile, onCloseMobile }: SidebarProps) {
     { label: "Transfer Produk", href: "/transfer", icon: ArrowLeftRight, badge: "Cabang" },
     { label: "Penjualan Produk", href: "/penjualan", icon: ShoppingBag },
     { label: "Cash Management", href: "/cash", icon: DollarSign },
-    { label: "Pengeluaran", href: "/pengeluaran", icon: Receipt },
   ];
 
   const navItems = isOwner ? ownerNavItems : adminNavItems;
@@ -103,7 +98,6 @@ export function Sidebar({ isOpenMobile, onCloseMobile }: SidebarProps) {
   ];
 
   const reportItems = isOwner ? ownerReportItems : adminReportItems;
-
 
   const handleLogout = async () => {
     if (confirm("Apakah Anda yakin ingin logout dari sistem?")) {

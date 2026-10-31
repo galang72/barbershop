@@ -106,7 +106,7 @@ export default function LaporanTahunanPage() {
       </div>
 
       {/* SUMMARY TOTAL ANNUAL CARDS */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3.5">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <Card className="card-stat p-4 bg-white border-blue-200 shadow-sm">
           <div className="text-xs text-blue-700 font-bold uppercase tracking-wider">Total Omzet Tahun {selectedYear}</div>
           <div className="text-2xl font-black text-blue-700 mt-1">
@@ -115,32 +115,24 @@ export default function LaporanTahunanPage() {
           <div className="text-[11px] text-slate-500 mt-1">Akumulasi 12 Bulan</div>
         </Card>
 
-        <Card className="card-stat p-4 bg-rose-50/50 border-rose-200 shadow-sm">
-          <div className="text-xs text-rose-700 font-bold uppercase tracking-wider">Total Pengeluaran</div>
-          <div className="text-2xl font-black text-rose-700 mt-1">
-            -{formatRupiah(summary.totalExpenses || 0)}
-          </div>
-          <div className="text-[11px] text-rose-600 mt-1">Beban Operasional</div>
-        </Card>
-
-        <Card className="card-stat p-4 bg-emerald-50/50 border-emerald-200 shadow-sm">
-          <div className="text-xs text-emerald-700 font-bold uppercase tracking-wider">Estimasi Laba Bersih</div>
-          <div className="text-2xl font-black text-emerald-700 mt-1">
-            {formatRupiah((summary.totalOmzet || 0) - (summary.totalExpenses || 0))}
-          </div>
-          <div className="text-[11px] text-emerald-600 mt-1">Omzet - Pengeluaran</div>
-        </Card>
-
         <Card className="card-stat p-4 bg-white border-slate-200/80 shadow-sm">
-          <div className="text-xs text-slate-500 uppercase font-semibold">Total Customer</div>
+          <div className="text-xs text-slate-500 uppercase font-semibold">Total Customer Dilayani</div>
           <div className="text-2xl font-black text-slate-900 mt-1">
             {summary.totalCustomer || 0} orang
           </div>
-          <div className="text-[11px] text-slate-400 mt-1">{summary.totalTransactions || 0} struk kasir</div>
+          <div className="text-[11px] text-slate-400 mt-1">Volume kunjungan</div>
         </Card>
 
         <Card className="card-stat p-4 bg-white border-slate-200/80 shadow-sm">
-          <div className="text-xs text-slate-500 uppercase font-semibold">Penjualan Produk</div>
+          <div className="text-xs text-slate-500 uppercase font-semibold">Total Transaksi Kasir</div>
+          <div className="text-2xl font-black text-slate-900 mt-1">
+            {summary.totalTransactions || 0} struk
+          </div>
+          <div className="text-[11px] text-slate-400 mt-1">Transaksi tercatat</div>
+        </Card>
+
+        <Card className="card-stat p-4 bg-white border-slate-200/80 shadow-sm">
+          <div className="text-xs text-slate-500 uppercase font-semibold">Total Penjualan Produk</div>
           <div className="text-2xl font-black text-slate-900 mt-1">
             {formatRupiah(summary.totalProductSales || 0)}
           </div>
@@ -203,33 +195,24 @@ export default function LaporanTahunanPage() {
                 <th className="py-3.5 px-4 text-center">Customer</th>
                 <th className="py-3.5 px-4 text-center">Transaksi</th>
                 <th className="py-3.5 px-4 text-right">Penjualan Produk</th>
-                <th className="py-3.5 px-4 text-right">Pengeluaran</th>
                 <th className="py-3.5 px-4 text-right">Total Omzet</th>
-                <th className="py-3.5 px-4 text-right">Laba Bersih</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-sm">
-              {months.map((m: any, idx: number) => {
-                const net = (m.omzet || 0) - (m.expenses || 0);
-                return (
-                  <tr key={idx} className="hover:bg-blue-50/40">
-                    <td className="py-3.5 px-4 font-bold text-slate-900 flex items-center gap-2">
-                      <span className="w-6 h-6 rounded bg-blue-50 text-blue-700 border border-blue-200 flex items-center justify-center text-xs font-mono no-print">
-                        {m.monthNumber}
-                      </span>
-                      <span>{m.month}</span>
-                    </td>
-                    <td className="py-3.5 px-4 text-center font-bold text-slate-700">{m.customer} orang</td>
-                    <td className="py-3.5 px-4 text-center font-bold text-slate-700">{m.transactions}x</td>
-                    <td className="py-3.5 px-4 text-right text-slate-600 font-semibold">{formatRupiah(m.productOmzet)}</td>
-                    <td className="py-3.5 px-4 text-right font-bold text-rose-600">
-                      {m.expenses > 0 ? `-${formatRupiah(m.expenses)}` : "Rp 0"}
-                    </td>
-                    <td className="py-3.5 px-4 text-right font-black text-blue-700 text-base">{formatRupiah(m.omzet)}</td>
-                    <td className="py-3.5 px-4 text-right font-black text-emerald-700 text-base">{formatRupiah(net)}</td>
-                  </tr>
-                );
-              })}
+              {months.map((m: any, idx: number) => (
+                <tr key={idx} className="hover:bg-blue-50/40">
+                  <td className="py-3.5 px-4 font-bold text-slate-900 flex items-center gap-2">
+                    <span className="w-6 h-6 rounded bg-blue-50 text-blue-700 border border-blue-200 flex items-center justify-center text-xs font-mono no-print">
+                      {m.monthNumber}
+                    </span>
+                    <span>{m.month}</span>
+                  </td>
+                  <td className="py-3.5 px-4 text-center font-bold text-slate-700">{m.customer} orang</td>
+                  <td className="py-3.5 px-4 text-center font-bold text-slate-700">{m.transactions}x</td>
+                  <td className="py-3.5 px-4 text-right text-slate-600 font-semibold">{formatRupiah(m.productOmzet)}</td>
+                  <td className="py-3.5 px-4 text-right font-black text-blue-700 text-base">{formatRupiah(m.omzet)}</td>
+                </tr>
+              ))}
             </tbody>
             <tfoot>
               <tr className="border-t-2 border-slate-200 bg-slate-50 font-bold text-sm">
@@ -237,11 +220,7 @@ export default function LaporanTahunanPage() {
                 <td className="py-3.5 px-4 text-center text-slate-900">{summary.totalCustomer || 0} orang</td>
                 <td className="py-3.5 px-4 text-center text-slate-900">{summary.totalTransactions || 0}x</td>
                 <td className="py-3.5 px-4 text-right text-slate-700 font-semibold">{formatRupiah(summary.totalProductSales || 0)}</td>
-                <td className="py-3.5 px-4 text-right text-rose-700 font-bold">-{formatRupiah(summary.totalExpenses || 0)}</td>
                 <td className="py-3.5 px-4 text-right text-blue-700 font-black text-base">{formatRupiah(summary.totalOmzet || 0)}</td>
-                <td className="py-3.5 px-4 text-right text-emerald-700 font-black text-base">
-                  {formatRupiah((summary.totalOmzet || 0) - (summary.totalExpenses || 0))}
-                </td>
               </tr>
             </tfoot>
           </table>

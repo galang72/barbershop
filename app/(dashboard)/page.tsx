@@ -237,7 +237,7 @@ export default function DashboardPage() {
       {isOwner ? (
         <div className="space-y-5">
 
-          {/* KARTU PERBANDINGAN 2 CABANG — ringkas, mendalam & eksekutif */}
+          {/* KARTU PERBANDINGAN 2 CABANG */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* TELKOM */}
             <Card className="border-sky-200 bg-gradient-to-br from-sky-50 to-white shadow-sm overflow-hidden">
@@ -330,8 +330,8 @@ export default function DashboardPage() {
             </Card>
           </div>
 
-          {/* TOTAL GABUNGAN EKSEKUTIF (7 KARTU MONITORING OWNER) */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+          {/* TOTAL GABUNGAN EKSEKUTIF (6 KARTU MONITORING OWNER) */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
             <Card className="p-3.5 border-blue-200 bg-white shadow-sm text-center hover:border-blue-400 transition">
               <div className="text-[10px] font-bold text-blue-500 uppercase tracking-wider">Total Tamu</div>
               <div className="text-2xl font-black text-blue-900 mt-1">{totalMetrics.todayCustomer}</div>
@@ -347,17 +347,12 @@ export default function DashboardPage() {
               <div className="text-lg font-black text-emerald-700 mt-1">{formatRupiah(totalMetrics.todayRevenue)}</div>
               <div className="text-[10px] text-emerald-600/70 font-semibold">Gabungan Cabang</div>
             </Card>
-            <Card className="p-3.5 border-rose-200 bg-rose-50/40 shadow-sm text-center hover:border-rose-400 transition">
-              <div className="text-[10px] font-bold text-rose-600 uppercase tracking-wider">Pengeluaran</div>
-              <div className="text-lg font-black text-rose-700 mt-1">-{formatRupiah(totalMetrics.totalExpenses || totalMetrics.cashOut || 0)}</div>
-              <div className="text-[10px] text-rose-600/70 font-semibold">Beban 2 Cabang</div>
-            </Card>
             <Card className="p-3.5 border-amber-200 bg-amber-50/40 shadow-sm text-center hover:border-amber-400 transition">
               <div className="text-[10px] font-bold text-amber-600 uppercase tracking-wider">Total Cash Fisik</div>
               <div className="text-lg font-black text-amber-700 mt-1">{formatRupiah(totalMetrics.cashInHand || 0)}</div>
               <div className="text-[10px] text-slate-400">Laci 2 Cabang</div>
             </Card>
-            <Card className="p-3.5 border-purple-200 bg-white shadow-sm text-center hover:border-purple-400 transition">
+            <Card className="p-3.5 border-purple-200 bg-white shadow-sm text-center hover:border-purple-500 transition">
               <div className="text-[10px] font-bold text-purple-500 uppercase tracking-wider">Total Booking</div>
               <div className="text-2xl font-black text-purple-900 mt-1">{totalMetrics.todayBooking}</div>
               <div className="text-[10px] text-slate-400">Reservasi Hari Ini</div>
@@ -370,7 +365,7 @@ export default function DashboardPage() {
           </div>
         </div>
       ) : (
-        /* ── ADMIN VIEW: 10 KARTU METRIK KASIR CABANG (Section E, F, G) ── */
+        /* ── ADMIN VIEW: 10 KARTU METRIK KASIR CABANG ── */
         <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
           {/* Card 1: Customer */}
           <Card className="hover:border-blue-300">
@@ -490,18 +485,6 @@ export default function DashboardPage() {
             </div>
             <div className="mt-2 text-2xl font-black text-slate-900">{formatRupiah(metrics.productSalesRevenue)}</div>
             <div className="text-[11px] text-slate-400 mt-1">Retail grooming omzet</div>
-          </Card>
-
-          {/* Card 11: Total Pengeluaran */}
-          <Card className="border-rose-200 bg-rose-50/50 hover:border-rose-300">
-            <div className="flex items-center justify-between text-rose-800 text-xs font-semibold">
-              <span>Pengeluaran Kas</span>
-              <div className="p-2 rounded-xl bg-rose-600 text-white">
-                <Receipt className="w-4 h-4" />
-              </div>
-            </div>
-            <div className="mt-2 text-2xl font-black text-rose-700">-{formatRupiah(metrics.totalExpenses || metrics.cashOut || 0)}</div>
-            <div className="text-[11px] text-rose-600/80 mt-1">Beban operasional kasir</div>
           </Card>
         </div>
       )}
@@ -638,7 +621,7 @@ export default function DashboardPage() {
         </div>
       </Card>
 
-      {/* ── AKTIVITAS TERBARU (GABUNGAN TELKOM + SUTA UNTUK OWNER - Section BG) ── */}
+      {/* ── AKTIVITAS TERBARU ── */}
       {isOwner && recentActivities.length > 0 && (
         <Card className="p-5 border-slate-200 shadow-sm space-y-3">
           <div className="flex items-center justify-between pb-2 border-b border-slate-100">
@@ -680,7 +663,6 @@ export default function DashboardPage() {
 
       {/* QUICK SHORTCUTS GRID */}
       {isOwner ? (
-        /* ── OWNER: 4 Link Monitoring & Laporan ── */
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <Link
             href="/laporan/cabang"

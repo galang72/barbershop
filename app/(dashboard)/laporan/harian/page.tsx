@@ -395,48 +395,6 @@ export default function LaporanHarianPage() {
         </div>
       </Card>
 
-      {/* RINCIAN PENGELUARAN HARI INI */}
-      {report?.expensesList && report.expensesList.length > 0 && (
-        <Card className="border-slate-200/80 shadow-sm bg-white overflow-hidden">
-          <div className="p-4 border-b border-slate-200 flex items-center justify-between">
-            <CardTitle className="text-sm font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">
-              <Receipt className="w-4 h-4 text-rose-600 no-print" />
-              <span>Rincian Beban Pengeluaran Hari Ini ({report.expensesList.length} pos)</span>
-            </CardTitle>
-            <span className="text-xs font-bold text-rose-600">
-              Total: -{formatRupiah(report.totalExpenses || report.cashOut || 0)}
-            </span>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase">
-                  <th className="py-2.5 px-4">Jam</th>
-                  <th className="py-2.5 px-4">Kategori</th>
-                  <th className="py-2.5 px-4">Keterangan / Keperluan</th>
-                  <th className="py-2.5 px-4">Metode Bayar</th>
-                  <th className="py-2.5 px-4">Cabang</th>
-                  <th className="py-2.5 px-4 text-right">Nominal (Rp)</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {report.expensesList.map((exp: any, idx: number) => (
-                  <tr key={idx} className="hover:bg-rose-50/30">
-                    <td className="py-2 px-4 font-mono text-slate-500">{exp.time}</td>
-                    <td className="py-2 px-4 font-semibold text-slate-900">{exp.category}</td>
-                    <td className="py-2 px-4 text-slate-700">{exp.description}</td>
-                    <td className="py-2 px-4 text-slate-600">{exp.paymentMethod || "CASH"}</td>
-                    <td className="py-2 px-4">{exp.branch || "Telkom"}</td>
-                    <td className="py-2 px-4 text-right font-black text-rose-600">-{formatRupiah(exp.amount)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      )}
-
       {/* TANDA TANGAN & PENGESAHAN LAPORAN (SAAT PRINT) */}
       <ReportFooter signerName="Admin Kasir AD Barbershop" />
     </div>

@@ -354,9 +354,12 @@ async function _doEnsureSchema(): Promise<void> {
       `);
     } catch {}
     try {
+<<<<<<< HEAD
+=======
       await prisma.$executeRawUnsafe(`ALTER TABLE "expenses" ADD COLUMN IF NOT EXISTS "branch" TEXT DEFAULT 'Telkom'`);
     } catch {}
     try {
+>>>>>>> ffd6a58 (fix: perbaiki fitur pengeluaran expenses dan integrasi multi-cabang)
       await prisma.$executeRawUnsafe(`
         CREATE TABLE IF NOT EXISTS "product_transfers" (
           "id" TEXT NOT NULL PRIMARY KEY,
@@ -3497,6 +3500,11 @@ export async function createCashEntry(data: {
         entry.source,
         entry.branch
       ).catch((e: any) => console.warn("⚠️ [createCashEntry] Prisma insert:", e?.message));
+<<<<<<< HEAD
+    }
+  } catch {}
+
+=======
 
       // Jika CASH_OUT dan bukan dari EXPENSE, simpan juga ke expenses
       if (entry.type === "CASH_OUT" && entry.source !== "EXPENSE") {
@@ -3528,11 +3536,14 @@ export async function createCashEntry(data: {
     });
   }
 
+>>>>>>> ffd6a58 (fix: perbaiki fitur pengeluaran expenses dan integrasi multi-cabang)
   saveLocalDB();
   return entry;
 }
 
 // -------------------------------------------------------------
+<<<<<<< HEAD
+=======
 // EXPENSES (PENGELUARAN MULTI-CABANG SUPABASE & MEMORY)
 // -------------------------------------------------------------
 
@@ -3790,6 +3801,7 @@ export async function deleteExpense(id: string) {
 }
 
 // -------------------------------------------------------------
+>>>>>>> ffd6a58 (fix: perbaiki fitur pengeluaran expenses dan integrasi multi-cabang)
 // DASHBOARD & PERFORMA BARBERMAN STATS
 // -------------------------------------------------------------
 
@@ -3953,8 +3965,11 @@ export async function getDashboardData(
         lowStockProducts: lowStock,
         productSalesRevenue: 0,
         cashInHand,
+<<<<<<< HEAD
+=======
         cashOut,
         totalExpenses: cashOut,
+>>>>>>> ffd6a58 (fix: perbaiki fitur pengeluaran expenses dan integrasi multi-cabang)
       };
     };
 
@@ -4102,8 +4117,11 @@ export async function getDashboardData(
       lowStockProducts: lowStock,
       productSalesRevenue,
       cashInHand,
+<<<<<<< HEAD
+=======
       cashOut,
       totalExpenses: cashOut,
+>>>>>>> ffd6a58 (fix: perbaiki fitur pengeluaran expenses dan integrasi multi-cabang)
     };
   };
 
@@ -4311,16 +4329,24 @@ export async function getDailyReport(dateStr?: string, branch?: string) {
     if (branch && branch !== "All") txWhere.branch = branch;
     const barberWhere: any = { isActive: true };
     if (branch && branch !== "All") barberWhere.workingBranch = branch;
+<<<<<<< HEAD
+
+    const [txs, cashEntries, barbermanList, bookingsCount, newMembersCount] = await Promise.all([
+=======
     const expWhere: any = { expenseDate: { gte: start, lte: end } };
     if (branch && branch !== "All") expWhere.branch = branch;
 
     const [txs, cashEntries, barbermanList, bookingsCount, newMembersCount, rawExpenses] = await Promise.all([
+>>>>>>> ffd6a58 (fix: perbaiki fitur pengeluaran expenses dan integrasi multi-cabang)
       prisma.transaction.findMany({ where: txWhere, include: { items: true, payments: true, barberman: true, customer: true }, orderBy: { createdAt: "desc" } }).catch(() => [] as any[]),
       prisma.cashTransaction.findMany({ where: { createdAt: { gte: start, lte: end }, ...(branch && branch !== "All" ? { branch } : {}) } }).catch(() => [] as any[]),
       prisma.barberman.findMany({ where: barberWhere, orderBy: { name: "asc" } }).catch(() => [] as any[]),
       prisma.booking.count({ where: { bookingDate: { gte: start, lte: end } } }).catch(() => 0),
       prisma.member.count({ where: { createdAt: { gte: start, lte: end } } }).catch(() => 0),
+<<<<<<< HEAD
+=======
       prisma.expense.findMany({ where: expWhere, orderBy: { expenseDate: "desc" } }).catch(() => [] as any[]),
+>>>>>>> ffd6a58 (fix: perbaiki fitur pengeluaran expenses dan integrasi multi-cabang)
     ]);
 
     let serviceSales = 0; let productSales = 0; let totalOmzet = 0;
@@ -4333,6 +4359,12 @@ export async function getDailyReport(dateStr?: string, branch?: string) {
         else if (item.itemType === "PRODUCT") productSales += item.subtotal || 0;
       }
     }
+<<<<<<< HEAD
+    for (const c of cashEntries) {
+      if ((c as any).type === "CASH_IN") cashIn += (c as any).amount || 0;
+      else if ((c as any).type === "CASH_OUT") cashOut += (c as any).amount || 0;
+    }
+=======
 
     const seenExp = new Set<string>();
     const expensesList: any[] = [];
@@ -4368,6 +4400,7 @@ export async function getDailyReport(dateStr?: string, branch?: string) {
       }
     }
     const totalExpenses = expensesList.reduce((s, e) => s + (e.amount || 0), 0);
+>>>>>>> ffd6a58 (fix: perbaiki fitur pengeluaran expenses dan integrasi multi-cabang)
 
     const barbermanStats = barbermanList.map((b: any) => {
       const bTxs = txs.filter((t: any) => t.barbermanId === b.id);
@@ -4385,8 +4418,11 @@ export async function getDailyReport(dateStr?: string, branch?: string) {
       pomadeSold: pomadeReport.totalSold, pomadeOmzet: pomadeReport.totalOmzet,
       tonicPowderSold: tonicPowderReport.totalSold, tonicPowderOmzet: tonicPowderReport.totalOmzet,
       cashIn, cashOut, cashEnding: cashIn - cashOut,
+<<<<<<< HEAD
+=======
       totalExpenses,
       expensesList,
+>>>>>>> ffd6a58 (fix: perbaiki fitur pengeluaran expenses dan integrasi multi-cabang)
       bookingsCount, newMembersCount,
       barbermanPerformance: barbermanStats,
       transactions: txs,
@@ -4414,6 +4450,12 @@ export async function getDailyReport(dateStr?: string, branch?: string) {
   let cashEntries = (memoryDB.cashTransactions || []).filter((c: any) => { const d = new Date(c.createdAt); return d >= start && d <= end; });
   if (branch && branch !== "All") cashEntries = cashEntries.filter((c: any) => !c.branch || c.branch === branch || c.branch === "All");
   let cashIn = 0; let cashOut = 0;
+<<<<<<< HEAD
+  for (const c of cashEntries) {
+    if (c.type === "CASH_IN") cashIn += c.amount || 0;
+    else if (c.type === "CASH_OUT") cashOut += c.amount || 0;
+  }
+=======
 
   const rawExpenses = (memoryDB.expenses || []).filter((e: any) => {
     const d = new Date(e.expenseDate || e.createdAt);
@@ -4453,6 +4495,7 @@ export async function getDailyReport(dateStr?: string, branch?: string) {
     }
   }
   const totalExpenses = expensesList.reduce((s, e) => s + (e.amount || 0), 0);
+>>>>>>> ffd6a58 (fix: perbaiki fitur pengeluaran expenses dan integrasi multi-cabang)
 
   let barberList = (memoryDB.barbermen || []).filter((b: any) => b.isActive);
   if (branch && branch !== "All") barberList = barberList.filter((b: any) => (b.workingBranch || b.branch) === branch);
@@ -4476,8 +4519,11 @@ export async function getDailyReport(dateStr?: string, branch?: string) {
     pomadeSold: pomadeReport.totalSold, pomadeOmzet: pomadeReport.totalOmzet,
     tonicPowderSold: tonicPowderReport.totalSold, tonicPowderOmzet: tonicPowderReport.totalOmzet,
     cashIn, cashOut, cashEnding: cashIn - cashOut,
+<<<<<<< HEAD
+=======
     totalExpenses,
     expensesList,
+>>>>>>> ffd6a58 (fix: perbaiki fitur pengeluaran expenses dan integrasi multi-cabang)
     bookingsCount: bookingsList.length, newMembersCount,
     barbermanPerformance: barbermanStats,
     transactions: txs.map((t: any) => ({
@@ -4497,6 +4543,9 @@ export async function getAnnualReport(year: number = new Date().getFullYear(), b
   if (hasPersistentDb) {
     const txWhere: any = { createdAt: { gte: new Date(year, 0, 1), lte: new Date(year, 11, 31, 23, 59, 59) } };
     if (branch && branch !== "All") txWhere.branch = branch;
+<<<<<<< HEAD
+    const txs = await prisma.transaction.findMany({ where: txWhere, include: { items: true } }).catch(() => [] as any[]);
+=======
     const expWhere: any = { expenseDate: { gte: new Date(year, 0, 1), lte: new Date(year, 11, 31, 23, 59, 59) } };
     if (branch && branch !== "All") expWhere.branch = branch;
 
@@ -4504,19 +4553,26 @@ export async function getAnnualReport(year: number = new Date().getFullYear(), b
       prisma.transaction.findMany({ where: txWhere, include: { items: true } }).catch(() => [] as any[]),
       prisma.expense.findMany({ where: expWhere }).catch(() => [] as any[]),
     ]);
+>>>>>>> ffd6a58 (fix: perbaiki fitur pengeluaran expenses dan integrasi multi-cabang)
 
     const monthsData = [];
     for (let m = 0; m < 12; m++) {
       const monthTxs = txs.filter((t: any) => new Date(t.createdAt).getMonth() === m);
+<<<<<<< HEAD
+=======
       const monthExpenses = allExpenses
         .filter((e: any) => new Date(e.expenseDate || e.createdAt).getMonth() === m)
         .reduce((sum: number, e: any) => sum + (e.amount || 0), 0);
 
+>>>>>>> ffd6a58 (fix: perbaiki fitur pengeluaran expenses dan integrasi multi-cabang)
       let omzet = 0; let productOmzet = 0;
       for (const t of monthTxs) {
         omzet += (t as any).grandTotal || 0;
         for (const it of (t as any).items || []) { if (it.itemType === "PRODUCT") productOmzet += it.subtotal || 0; }
       }
+<<<<<<< HEAD
+      monthsData.push({ month: monthNames[m], monthNumber: m + 1, customer: monthTxs.length, transactions: monthTxs.length, omzet, productOmzet });
+=======
       monthsData.push({
         month: monthNames[m],
         monthNumber: m + 1,
@@ -4527,6 +4583,7 @@ export async function getAnnualReport(year: number = new Date().getFullYear(), b
         expenses: monthExpenses,
         netProfit: omzet - monthExpenses,
       });
+>>>>>>> ffd6a58 (fix: perbaiki fitur pengeluaran expenses dan integrasi multi-cabang)
     }
     return {
       year, branch: branch || "All", months: monthsData,
@@ -4535,8 +4592,11 @@ export async function getAnnualReport(year: number = new Date().getFullYear(), b
         totalCustomer: monthsData.reduce((s, m) => s + m.customer, 0),
         totalTransactions: monthsData.reduce((s, m) => s + m.transactions, 0),
         totalProductSales: monthsData.reduce((s, m) => s + m.productOmzet, 0),
+<<<<<<< HEAD
+=======
         totalExpenses: monthsData.reduce((s, m) => s + m.expenses, 0),
         totalNetProfit: monthsData.reduce((s, m) => s + m.netProfit, 0),
+>>>>>>> ffd6a58 (fix: perbaiki fitur pengeluaran expenses dan integrasi multi-cabang)
       },
     };
   }
@@ -4545,6 +4605,11 @@ export async function getAnnualReport(year: number = new Date().getFullYear(), b
   await initMemoryDBIfNeeded();
   syncFromLocalDB();
   const monthsData = [];
+<<<<<<< HEAD
+  for (let m = 0; m < 12; m++) {
+    let txs = (memoryDB.transactions || []).filter((t: any) => { const d = new Date(t.createdAt); return d.getFullYear() === year && d.getMonth() === m; });
+    if (branch && branch !== "All") txs = txs.filter((t: any) => t.branch === branch);
+=======
   const allExpenses = (memoryDB.expenses || []).filter((e: any) => {
     const d = new Date(e.expenseDate || e.createdAt);
     return d.getFullYear() === year && (!branch || branch === "All" || !e.branch || e.branch === branch);
@@ -4557,12 +4622,16 @@ export async function getAnnualReport(year: number = new Date().getFullYear(), b
       .filter((e: any) => new Date(e.expenseDate || e.createdAt).getMonth() === m)
       .reduce((sum: number, e: any) => sum + (e.amount || 0), 0);
 
+>>>>>>> ffd6a58 (fix: perbaiki fitur pengeluaran expenses dan integrasi multi-cabang)
     let omzet = 0; let productOmzet = 0;
     for (const t of txs) {
       omzet += t.grandTotal || 0;
       const items = (memoryDB.transactionItems || []).filter((i: any) => i.transactionId === t.id);
       for (const it of items) { if (it.itemType === "PRODUCT") productOmzet += it.subtotal || 0; }
     }
+<<<<<<< HEAD
+    monthsData.push({ month: monthNames[m], monthNumber: m + 1, customer: txs.length, transactions: txs.length, omzet, productOmzet });
+=======
     monthsData.push({
       month: monthNames[m],
       monthNumber: m + 1,
@@ -4573,6 +4642,7 @@ export async function getAnnualReport(year: number = new Date().getFullYear(), b
       expenses: monthExpenses,
       netProfit: omzet - monthExpenses,
     });
+>>>>>>> ffd6a58 (fix: perbaiki fitur pengeluaran expenses dan integrasi multi-cabang)
   }
   return {
     year, branch: branch || "All", months: monthsData,
@@ -4581,8 +4651,11 @@ export async function getAnnualReport(year: number = new Date().getFullYear(), b
       totalCustomer: monthsData.reduce((s, m) => s + m.customer, 0),
       totalTransactions: monthsData.reduce((s, m) => s + m.transactions, 0),
       totalProductSales: monthsData.reduce((s, m) => s + m.productOmzet, 0),
+<<<<<<< HEAD
+=======
       totalExpenses: monthsData.reduce((s, m) => s + m.expenses, 0),
       totalNetProfit: monthsData.reduce((s, m) => s + m.netProfit, 0),
+>>>>>>> ffd6a58 (fix: perbaiki fitur pengeluaran expenses dan integrasi multi-cabang)
     },
   };
 }
@@ -4601,11 +4674,20 @@ export async function getMonthlyReport(yearNum?: number, monthNum?: number, bran
   let txs: any[] = [];
   let cashEntries: any[] = [];
   let barberList: any[] = [];
+<<<<<<< HEAD
+=======
   let rawExpenses: any[] = [];
+>>>>>>> ffd6a58 (fix: perbaiki fitur pengeluaran expenses dan integrasi multi-cabang)
 
   if (hasPersistentDb) {
     const txWhere: any = { createdAt: { gte: startM, lte: endM } };
     if (branch && branch !== "All") txWhere.branch = branch;
+<<<<<<< HEAD
+    [txs, cashEntries, barberList] = await Promise.all([
+      prisma.transaction.findMany({ where: txWhere, include: { items: true, barberman: true, customer: true, payments: true }, orderBy: { createdAt: "desc" } }).catch(() => []),
+      prisma.cashTransaction.findMany({ where: { createdAt: { gte: startM, lte: endM }, ...(branch && branch !== "All" ? { branch } : {}) } }).catch(() => []),
+      prisma.barberman.findMany({ where: { isActive: true, ...(branch && branch !== "All" ? { workingBranch: branch } : {}) }, orderBy: { name: "asc" } }).catch(() => []),
+=======
     const expWhere: any = { expenseDate: { gte: startM, lte: endM } };
     if (branch && branch !== "All") expWhere.branch = branch;
 
@@ -4614,6 +4696,7 @@ export async function getMonthlyReport(yearNum?: number, monthNum?: number, bran
       prisma.cashTransaction.findMany({ where: { createdAt: { gte: startM, lte: endM }, ...(branch && branch !== "All" ? { branch } : {}) } }).catch(() => []),
       prisma.barberman.findMany({ where: { isActive: true, ...(branch && branch !== "All" ? { workingBranch: branch } : {}) }, orderBy: { name: "asc" } }).catch(() => []),
       prisma.expense.findMany({ where: expWhere, orderBy: { expenseDate: "desc" } }).catch(() => []),
+>>>>>>> ffd6a58 (fix: perbaiki fitur pengeluaran expenses dan integrasi multi-cabang)
     ]);
     // Items already included in txs
   } else {
@@ -4625,10 +4708,13 @@ export async function getMonthlyReport(yearNum?: number, monthNum?: number, bran
     if (branch && branch !== "All") cashEntries = cashEntries.filter((c: any) => !c.branch || c.branch === branch || c.branch === "All");
     barberList = (memoryDB.barbermen || []).filter((b: any) => b.isActive);
     if (branch && branch !== "All") barberList = barberList.filter((b: any) => (b.workingBranch || b.branch) === branch);
+<<<<<<< HEAD
+=======
     rawExpenses = (memoryDB.expenses || []).filter((e: any) => {
       const d = new Date(e.expenseDate || e.createdAt);
       return d.getFullYear() === year && d.getMonth() === month && (!branch || branch === "All" || !e.branch || e.branch === branch);
     });
+>>>>>>> ffd6a58 (fix: perbaiki fitur pengeluaran expenses dan integrasi multi-cabang)
     // Attach items from memoryDB
     txs = txs.map((t: any) => ({ ...t, items: (memoryDB.transactionItems || []).filter((i: any) => i.transactionId === t.id) }));
   }
@@ -4674,6 +4760,9 @@ export async function getMonthlyReport(yearNum?: number, monthNum?: number, bran
   }
 
   let cashIn = 0; let cashOut = 0;
+<<<<<<< HEAD
+  const expensesList: any[] = [];
+=======
   const seenExp = new Set<string>();
   const expensesList: any[] = [];
 
@@ -4691,11 +4780,20 @@ export async function getMonthlyReport(yearNum?: number, monthNum?: number, bran
     });
   }
 
+>>>>>>> ffd6a58 (fix: perbaiki fitur pengeluaran expenses dan integrasi multi-cabang)
   for (const c of cashEntries) {
     if (c.type === "CASH_IN") {
       cashIn += c.amount || 0;
     } else if (c.type === "CASH_OUT") {
       cashOut += c.amount || 0;
+<<<<<<< HEAD
+      expensesList.push({ id: c.id, category: c.category || "Operasional", description: c.description, amount: c.amount, date: format(new Date(c.createdAt), "yyyy-MM-dd HH:mm") });
+    }
+  }
+
+  const grossProfit = serviceSales + (productSales - productCost);
+  const netOperatingIncome = grossProfit - cashOut;
+=======
       if (!seenExp.has(c.id) && !c.source?.includes("EXPENSE")) {
         expensesList.push({
           id: c.id,
@@ -4713,6 +4811,7 @@ export async function getMonthlyReport(yearNum?: number, monthNum?: number, bran
   const totalCashExpenses = expensesList.reduce((sum, e) => sum + (e.amount || 0), 0);
   const grossProfit = serviceSales + (productSales - productCost);
   const netOperatingIncome = grossProfit - totalCashExpenses;
+>>>>>>> ffd6a58 (fix: perbaiki fitur pengeluaran expenses dan integrasi multi-cabang)
 
   const barbermanStats = barberList.map((b: any) => {
     const bTxs = txs.filter((t: any) => t.barbermanId === b.id);
@@ -4739,7 +4838,11 @@ export async function getMonthlyReport(yearNum?: number, monthNum?: number, bran
     branch: branch || "All",
     totalCustomers: txs.length, totalTransactions: txs.length,
     totalOmzet, serviceSales, productSales, productCost, grossProfit,
+<<<<<<< HEAD
+    cashExpenses: cashOut, netOperatingIncome, cashIn, cashOut,
+=======
     cashExpenses: totalCashExpenses, netOperatingIncome, cashIn, cashOut,
+>>>>>>> ffd6a58 (fix: perbaiki fitur pengeluaran expenses dan integrasi multi-cabang)
     cashEnding: cashIn - cashOut,
     averageTicketSize: txs.length > 0 ? Math.round(totalOmzet / txs.length) : 0,
     barbermanPerformance: barbermanStats,

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCashLedger, createCashEntry, updateShopSettings } from "@/lib/db";
 import { getAdminSession, resolveBranchFilter } from "@/lib/auth";
+import { invalidateCache } from "@/lib/cache";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +14,8 @@ export async function GET(req: NextRequest) {
     const data = await getCashLedger(branch);
     return NextResponse.json(data, {
       headers: {
-        "Cache-Control": "public, s-maxage=5, stale-while-revalidate=20",
+        "Cache-Control": "no-store, no-cache, must-revalidate",
+        "Pragma": "no-cache",
       },
     });
   } catch (err: any) {
@@ -25,7 +27,7 @@ export async function POST(req: NextRequest) {
   try {
     const session = await getAdminSession();
 
-    // AY. OWNER TIDAK MEMBUKA ATAU MENJALANKAN KASIR
+    // OWNER TIDAK MEMBUKA ATAU MENJALANKAN KASIR
     if (session?.role === "OWNER") {
       return NextResponse.json(
         { error: "Akses Ditolak: Owner hanya memantau laporan cash management dari kedua cabang, tidak melakukan input kas operasional." },
@@ -51,6 +53,10 @@ export async function POST(req: NextRequest) {
       branch,
     });
 
+    invalidateCache("cash");
+    invalidateCache("dashboard");
+    invalidateCache("reports");
+
     return NextResponse.json(created);
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
@@ -69,6 +75,9 @@ export async function PUT(req: NextRequest) {
       initialCashFloat: Number(initialFloat),
     });
 
+    invalidateCache("cash");
+    invalidateCache("dashboard");
+
     return NextResponse.json({
       success: true,
       initialCashFloat: updated.initialCashFloat,
@@ -78,4 +87,3 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
-
