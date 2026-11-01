@@ -48,6 +48,7 @@ export async function POST(req: NextRequest) {
     invalidateCache("barbermen");
     invalidateCache("customers");
     invalidateCache("cash");
+    invalidateCache("reports");
     invalidateCache("members");
     invalidateCache("reports");
 

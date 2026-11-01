@@ -27,7 +27,10 @@ export default function LaporanHarianPage() {
   const fetchReport = async () => {
     if (!_dailyReportClientCache[selectedDate]) setLoading(true);
     try {
-      const res = await fetch(`/api/reports/daily?date=${selectedDate}`);
+      const res = await fetch(`/api/reports/daily?date=${selectedDate}&_t=${Date.now()}`, {
+        cache: "no-store",
+        headers: { "Pragma": "no-cache", "Cache-Control": "no-cache" },
+      });
       const json = await res.json();
       _dailyReportClientCache[selectedDate] = json;
       setReport(json);

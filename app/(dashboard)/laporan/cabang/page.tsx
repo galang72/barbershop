@@ -21,8 +21,13 @@ export default function LaporanCabangPage() {
   const fetchReports = async () => {
     if (!_cabangReportClientCache[filter]) setLoading(true);
     try {
-      const url = filter !== "All" ? `/api/branch-reports?branch=${filter}` : "/api/branch-reports";
-      const res = await fetch(url);
+      const sep = filter !== "All" ? `&` : `?`;
+      const base = filter !== "All" ? `/api/branch-reports?branch=${filter}` : "/api/branch-reports";
+      const url = `${base}${sep}_t=${Date.now()}`;
+      const res = await fetch(url, {
+        cache: "no-store",
+        headers: { "Pragma": "no-cache", "Cache-Control": "no-cache" },
+      });
       const data = await res.json();
       const r = data.reports || [];
       const u = data.unreadCount || 0;

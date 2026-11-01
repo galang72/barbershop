@@ -3307,9 +3307,10 @@ export async function processCheckout(payload: CheckoutPayload & { branch?: stri
 
   // Cek apakah booking memiliki DP yang SUDAH DIBAYAR
   let isDpPaid = false;
+  let bookingRecord: any = null;
   if (payload.bookingId) {
-    const bkg = await prisma.booking.findUnique({ where: { id: payload.bookingId } }).catch(() => null);
-    if (bkg && (bkg.dpStatus === "SUDAH_DIBAYAR" || bkg.dpStatus === "LUNAS" || (bkg.dpAmount && bkg.dpAmount > 0 && bkg.dpStatus !== "BELUM_BAYAR"))) {
+    bookingRecord = await prisma.booking.findUnique({ where: { id: payload.bookingId } }).catch(() => null);
+    if (bookingRecord && (bookingRecord.dpStatus === "SUDAH_DIBAYAR" || bookingRecord.dpStatus === "LUNAS" || (bookingRecord.dpAmount && bookingRecord.dpAmount > 0 && bookingRecord.dpStatus !== "BELUM_BAYAR"))) {
       isDpPaid = true;
     }
   } else if (payload.dpAmount && payload.dpAmount > 0) {
@@ -3317,18 +3318,23 @@ export async function processCheckout(payload: CheckoutPayload & { branch?: stri
   }
   const bookingDpDiscount = isDpPaid ? 20000 : 0;
 
-  // Gabungkan diskon dengan aman tanpa duplikasi
-  // DP mengurangi tagihan SETELAH diskon member dihitung
-  let calculatedDiscount = memberDiscount + bookingDpDiscount;
-  if (payload.discount > calculatedDiscount) {
-    // Kasir memasukkan diskon manual tambahan
-    calculatedDiscount = Math.min(payload.subtotal, payload.discount);
+  // 🔑 DISKON & DP CALCULATION
+  // Diskon riil = Diskon Member (10% potong rambut) + Diskon manual
+  let manualDiscount = 0;
+  if (payload.discount && payload.discount > (memberDiscount + bookingDpDiscount)) {
+    manualDiscount = payload.discount - (memberDiscount + bookingDpDiscount);
   } else if (!activeMember && !isDpPaid) {
-    calculatedDiscount = Math.max(0, Math.min(payload.subtotal, payload.discount || 0));
+    manualDiscount = Math.max(0, Math.min(payload.subtotal, payload.discount || 0));
   }
+  const realDiscount = Math.min(payload.subtotal, memberDiscount + manualDiscount);
 
-  const calculatedGrandTotal = Math.max(0, payload.subtotal - calculatedDiscount);
-  payload.discount = calculatedDiscount;
+  // Nilai Omzet Transaksi Bersih setelah diskon
+  const calculatedGrandTotal = Math.max(0, payload.subtotal - realDiscount);
+
+  // Sisa yang ditagihkan di kasir (setelah dipotong uang muka DP Rp 20.000 jika ada)
+  const remainingCashierDue = Math.max(0, calculatedGrandTotal - bookingDpDiscount);
+
+  payload.discount = realDiscount;
   payload.grandTotal = calculatedGrandTotal;
 
   const notesTags: string[] = [];
@@ -3336,7 +3342,7 @@ export async function processCheckout(payload: CheckoutPayload & { branch?: stri
     notesTags.push(`[Member ${activeMember.memberCode}: Diskon 10% Haircut Rp ${memberDiscount.toLocaleString("id-ID")}]`);
   }
   if (isDpPaid) {
-    notesTags.push(`[DP Booking Rp 20.000 telah diperhitungkan]`);
+    notesTags.push(`[DP Booking Rp 20.000 telah diperhitungkan, Pelunasan Kasir: Rp ${remainingCashierDue.toLocaleString("id-ID")}]`);
   }
   if (notesTags.length > 0) {
     payload.notes = payload.notes ? `${payload.notes} | ${notesTags.join(" | ")}` : notesTags.join(" | ");
@@ -3448,30 +3454,41 @@ export async function processCheckout(payload: CheckoutPayload & { branch?: stri
         branch: txBranch,
         items: { create: itemsData },
         payments: {
-          create: [{
-            id: paymentId,
-            paymentMethod: payload.paymentMethod as any,
-            amountPaid: payload.amountPaid,
-            changeAmount: payload.changeAmount,
-            paymentRef: payload.paymentRef || null,
-          }],
+          create: [
+            {
+              id: paymentId,
+              paymentMethod: payload.paymentMethod as any,
+              amountPaid: payload.amountPaid ?? remainingCashierDue,
+              changeAmount: payload.changeAmount ?? 0,
+              paymentRef: payload.paymentRef || null,
+            },
+            ...(isDpPaid ? [{
+              id: `pay_dp_${txId}`,
+              paymentMethod: (bookingRecord?.dpMethod || "QRIS") as any,
+              amountPaid: 20000,
+              changeAmount: 0,
+              paymentRef: `DP Booking: ${payload.bookingId || "Terbayar"}`,
+            }] : []),
+          ],
         },
       },
       include: { items: true, payments: true, barberman: true, customer: true },
     });
 
-    await client.cashTransaction.create({
-      data: {
-        id: cashId,
-        type: "CASH_IN",
-        category: payMethod === "CASH" ? "Penjualan Kasir" : `Penjualan ${payMethod}`,
-        amount: payload.grandTotal,
-        description: `Pembayaran ${payMethod} Kasir ${invoiceNumber} (${payload.customerName})`,
-        source: "POS_SALE",
-        transactionId: txId,
-        branch: txBranch,
-      },
-    }).catch((e: any) => console.warn("cashTransaction create warning:", e?.message));
+    if (remainingCashierDue > 0) {
+      await client.cashTransaction.create({
+        data: {
+          id: cashId,
+          type: "CASH_IN",
+          category: payMethod === "CASH" ? "Penjualan Kasir" : `Penjualan ${payMethod}`,
+          amount: remainingCashierDue,
+          description: `Pembayaran ${payMethod} Kasir ${invoiceNumber} (${payload.customerName})${isDpPaid ? " [Pelunasan setelah DP Rp 20.000]" : ""}`,
+          source: "POS_SALE",
+          transactionId: txId,
+          branch: txBranch,
+        },
+      }).catch((e: any) => console.warn("cashTransaction create warning:", e?.message));
+    }
 
     if (payload.bookingId) {
       await client.booking.update({
@@ -4126,6 +4143,22 @@ export async function createCashEntry(data: {
         },
       });
       console.log(`✅ [createCashEntry] Tersimpan ke Supabase: ${entry.id} (${entry.type} ${entry.amount})`);
+
+      // Jika pengeluaran (CASH_OUT), sinkronkan otomatis ke tabel expenses
+      if (entry.type === "CASH_OUT") {
+        await prisma.expense.create({
+          data: {
+            id: `exp_${entry.id}`,
+            category: entry.category,
+            amount: entry.amount,
+            description: entry.description,
+            expenseDate: entry.createdAt,
+            paymentMethod: "CASH" as any,
+            branch: entry.branch,
+            createdAt: entry.createdAt,
+          },
+        }).catch(() => {});
+      }
     } catch (createErr: any) {
       console.warn("⚠️ [createCashEntry] prisma.create failed, fallback raw SQL:", createErr?.message);
       try {
@@ -4460,22 +4493,16 @@ export async function getDashboardData(
       bookingsCount,
       membersCount,
       productsList,
-      cashTxs,
+      cashLedger,
+      periodExpensesList,
       allBarbers,
-      settings,
       branchBkCount,
     ] = await Promise.all([
-      // Transaksi periode terpilih
+      // Transaksi periode terpilih (termasuk items untuk hitung omzet produk)
       prisma.transaction.findMany({
         where: { createdAt: { gte: startDate, lte: endDate } },
-        select: {
-          id: true,
-          grandTotal: true,
-          branch: true,
-          barbermanId: true,
-          customerId: true,
-          customerName: true,
-          paymentMethod: true,
+        include: {
+          items: true,
         },
       }).catch(() => []),
 
@@ -4502,25 +4529,37 @@ export async function getDashboardData(
         select: { id: true, stock: true, minStock: true },
       }).catch(() => []),
 
-      // Cash transactions — filter hanya tahun berjalan agar tidak load semua historical data
-      prisma.cashTransaction.findMany({
-        where: {
-          createdAt: { gte: startOfYear(now) },
-          ...(branch && branch !== "All" ? { branch } : {}),
-        },
-        select: {
-          type: true,
-          amount: true,
-          category: true,
-          branch: true,
-        },
-      }).catch(() => []),
+      // Cash Ledger — Single source of truth untuk Kas di Laci
+      getCashLedger(),
+
+      // Pengeluaran periode terpilih (gabungan tabel expenses & cash_transactions CASH_OUT tanpa duplikasi)
+      Promise.all([
+        prisma.expense.findMany({
+          where: { expenseDate: { gte: startDate, lte: endDate } },
+          select: { id: true, amount: true, branch: true },
+        }).catch(() => []),
+        prisma.cashTransaction.findMany({
+          where: { createdAt: { gte: startDate, lte: endDate }, type: "CASH_OUT" },
+          select: { id: true, amount: true, branch: true, source: true },
+        }).catch(() => []),
+      ]).then(([exps, cashOuts]) => {
+        const seenExp = new Set<string>();
+        const list: { amount: number; branch: string }[] = [];
+        for (const e of exps) {
+          seenExp.add(e.id);
+          seenExp.add(`csh_${e.id}`);
+          list.push({ amount: Number(e.amount || 0), branch: e.branch || "Telkom" });
+        }
+        for (const c of cashOuts) {
+          if (!seenExp.has(c.id) && !c.source?.includes("EXPENSE")) {
+            list.push({ amount: Number(c.amount || 0), branch: c.branch || "Telkom" });
+          }
+        }
+        return list;
+      }),
 
       // Semua barber aktif
       prisma.barberman.findMany({ where: { isActive: true } }).catch(() => []),
-
-      // Shop settings
-      prisma.shopSetting.findFirst().catch(() => null),
 
       // Branch booking count (jika filter cabang aktif)
       (branch && branch !== "All")
@@ -4533,9 +4572,6 @@ export async function getDashboardData(
         : Promise.resolve(0),
     ]);
 
-    const initFloatTelkom = (settings as any)?.initialCashFloatTelkom ?? (settings as any)?.initialCashFloat ?? 100000;
-    const initFloatSuta   = (settings as any)?.initialCashFloatSuta   ?? (settings as any)?.initialCashFloat ?? 100000;
-
     const calcBranchStatsDirect = (bFilter?: string) => {
       const txs = !bFilter || bFilter === "All" ? txsPeriod : txsPeriod.filter((t: any) => t.branch === bFilter);
       const mtxs = !bFilter || bFilter === "All" ? txsMonth : txsMonth.filter((t: any) => t.branch === bFilter);
@@ -4543,25 +4579,33 @@ export async function getDashboardData(
       const revenue = txs.reduce((sum: number, t: any) => sum + Number(t.grandTotal || 0), 0);
       const monthRevenue = mtxs.reduce((sum: number, t: any) => sum + Number(t.grandTotal || 0), 0);
 
+      // Hitung omzet retail produk
+      const productSalesRevenue = txs.reduce((sum: number, t: any) => {
+        const items = t.items || [];
+        const pSum = items
+          .filter((it: any) => it.itemType === "PRODUCT")
+          .reduce((s: number, it: any) => s + Number(it.subtotal || 0), 0);
+        return sum + pSum;
+      }, 0);
+
       // Low stock
       const lowStock = productsList.filter((p: any) => Number(p.stock || 0) <= Number(p.minStock || 5)).length;
 
-      // Cash calculation — hanya dari cashTransactions (sumber tunggal)
-      // cashTxs sudah include semua jenis: Modal Awal, Penjualan Kasir, Penjualan QRIS, pengeluaran
-      let physicalCashIn = 0, cashOut = 0;
-      for (const c of cashTxs) {
-        if (bFilter && bFilter !== "All" && c.branch && c.branch !== bFilter && c.branch !== "All") continue;
-        if (c.type === "CASH_IN") {
-          // Hanya hitung uang fisik di laci (bukan QRIS/TRANSFER/DEBIT)
-          const isDigital = c.category?.includes("QRIS") || c.category?.includes("TRANSFER") || c.category?.includes("DEBIT");
-          if (!isDigital) physicalCashIn += Number(c.amount || 0);
-        } else if (c.type === "CASH_OUT") {
-          cashOut += Number(c.amount || 0);
-        }
+      // Pengeluaran periode terpilih sesuai cabang
+      const filteredExpenses = !bFilter || bFilter === "All"
+        ? periodExpensesList
+        : periodExpensesList.filter((e) => e.branch === bFilter || e.branch === "All");
+      const periodExpenses = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
+
+      // Sisa kas di laci — 100% SINKRON dengan Cash Management (getCashLedger)
+      let branchCashInHand = 0;
+      if (bFilter === "Telkom") {
+        branchCashInHand = cashLedger.telkomCashInHand ?? cashLedger.cashInHand ?? 0;
+      } else if (bFilter === "Suta") {
+        branchCashInHand = cashLedger.sutaCashInHand ?? cashLedger.cashInHand ?? 0;
+      } else {
+        branchCashInHand = cashLedger.totalCashInHand ?? cashLedger.cashInHand ?? 0;
       }
-      // CATATAN: TIDAK perlu loop txs lagi karena processCheckout sudah create cashTransaction
-      const initF = bFilter === "Suta" ? initFloatSuta : bFilter === "Telkom" ? initFloatTelkom : (initFloatTelkom + initFloatSuta);
-      const cashInHand = physicalCashIn - cashOut;
 
       return {
         todayCustomer: txs.length,
@@ -4572,11 +4616,10 @@ export async function getDashboardData(
         totalMember: Number(membersCount || 0),
         totalProduct: productsList.length,
         lowStockProducts: lowStock,
-        productSalesRevenue: 0,
-        cashInHand,
-        cashOut,
-        totalExpenses: cashOut,
-
+        productSalesRevenue,
+        cashInHand: branchCashInHand,
+        cashOut: periodExpenses,
+        totalExpenses: periodExpenses,
       };
     };
 
@@ -5122,24 +5165,48 @@ export async function getAnnualReport(year: number = new Date().getFullYear(), b
   const hasPersistentDb = !!dbUrl && !dbUrl.includes("[YOUR-") && !dbUrl.includes("placeholder");
 
   if (hasPersistentDb) {
-    const txWhere: any = { createdAt: { gte: new Date(year, 0, 1), lte: new Date(year, 11, 31, 23, 59, 59) } };
-    if (branch && branch !== "All") txWhere.branch = branch;
-    const expWhere: any = { expenseDate: { gte: new Date(year, 0, 1), lte: new Date(year, 11, 31, 23, 59, 59) } };
-    if (branch && branch !== "All") expWhere.branch = branch;
+    const startOfYearWIB = new Date(`${year}-01-01T00:00:00.000+07:00`);
+    const endOfYearWIB = new Date(`${year}-12-31T23:59:59.999+07:00`);
 
-    const [txs, allExpenses] = await Promise.all([
+    const txWhere: any = { createdAt: { gte: startOfYearWIB, lte: endOfYearWIB } };
+    if (branch && branch !== "All") txWhere.branch = branch;
+    const expWhere: any = { expenseDate: { gte: startOfYearWIB, lte: endOfYearWIB } };
+    if (branch && branch !== "All") expWhere.branch = branch;
+    const cashWhere: any = { createdAt: { gte: startOfYearWIB, lte: endOfYearWIB }, type: "CASH_OUT" };
+    if (branch && branch !== "All") cashWhere.branch = branch;
+
+    const [txs, allExpenses, allCashOut] = await Promise.all([
       prisma.transaction.findMany({ where: txWhere, include: { items: true } }).catch(() => [] as any[]),
       prisma.expense.findMany({ where: expWhere }).catch(() => [] as any[]),
+      prisma.cashTransaction.findMany({ where: cashWhere }).catch(() => [] as any[]),
     ]);
 
+    // Gabungkan pengeluaran dari tabel expenses & cash_transactions CASH_OUT tanpa duplikasi
+    const seenExp = new Set<string>();
+    const combinedExpenses: { amount: number; date: Date }[] = [];
+    for (const exp of allExpenses) {
+      seenExp.add(exp.id);
+      seenExp.add(`csh_${exp.id}`);
+      combinedExpenses.push({
+        amount: Number(exp.amount || 0),
+        date: new Date(exp.expenseDate || exp.createdAt),
+      });
+    }
+    for (const c of allCashOut) {
+      if (!seenExp.has(c.id) && !c.source?.includes("EXPENSE")) {
+        combinedExpenses.push({
+          amount: Number(c.amount || 0),
+          date: new Date(c.createdAt),
+        });
+      }
+    }
 
     const monthsData = [];
     for (let m = 0; m < 12; m++) {
       const monthTxs = txs.filter((t: any) => new Date(t.createdAt).getMonth() === m);
-      const monthExpenses = allExpenses
-        .filter((e: any) => new Date(e.expenseDate || e.createdAt).getMonth() === m)
-        .reduce((sum: number, e: any) => sum + (e.amount || 0), 0);
-
+      const monthExpenses = combinedExpenses
+        .filter((e) => e.date.getMonth() === m)
+        .reduce((sum: number, e) => sum + (e.amount || 0), 0);
 
       let omzet = 0; let productOmzet = 0;
       for (const t of monthTxs) {
@@ -5156,7 +5223,6 @@ export async function getAnnualReport(year: number = new Date().getFullYear(), b
         expenses: monthExpenses,
         netProfit: omzet - monthExpenses,
       });
-
     }
     return {
       year, branch: branch || "All", months: monthsData,

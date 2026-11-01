@@ -49,11 +49,14 @@ export default function DashboardPage() {
       setLoading(true);
     }
     try {
-      let url = `/api/dashboard?filter=${filter}`;
+      let url = `/api/dashboard?filter=${filter}&_t=${Date.now()}`;
       if (filter === "custom" && customStart && customEnd) {
         url += `&start=${customStart}&end=${customEnd}`;
       }
-      const res = await fetch(url);
+      const res = await fetch(url, {
+        cache: "no-store",
+        headers: { "Pragma": "no-cache", "Cache-Control": "no-cache" },
+      });
       const json = await res.json();
       _dashboardClientCache[cacheKey] = json;
       _dashboardClientCache[filter] = json;

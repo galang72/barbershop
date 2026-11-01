@@ -68,6 +68,9 @@ export async function POST(req: NextRequest) {
     invalidateCache("bookings:");
     invalidateCache("dashboard");
     invalidateCache("cash");
+    invalidateCache("reports");
+    invalidateCache("cash");
+    invalidateCache("reports");
 
     return NextResponse.json({
       success: true,
@@ -109,6 +112,9 @@ export async function PUT(req: NextRequest) {
     invalidateCache("bookings:");
     invalidateCache("dashboard");
     invalidateCache("cash");
+    invalidateCache("reports");
+    invalidateCache("cash");
+    invalidateCache("reports");
 
     return NextResponse.json({
       success: true,
@@ -146,6 +152,9 @@ export async function PATCH(req: NextRequest) {
     invalidateCache("bookings:");
     invalidateCache("dashboard");
     invalidateCache("cash");
+    invalidateCache("reports");
+    invalidateCache("cash");
+    invalidateCache("reports");
 
     return NextResponse.json({ success: true, booking: updated });
   } catch (err: any) {
@@ -174,6 +183,8 @@ export async function DELETE(req: NextRequest) {
 
     invalidateCache("bookings:");
     invalidateCache("dashboard");
+    invalidateCache("cash");
+    invalidateCache("reports");
 
     return NextResponse.json({ success: true, message: "Booking berhasil dihapus." });
   } catch (err: any) {

@@ -135,7 +135,9 @@ export async function GET(req: NextRequest) {
       },
     }, {
       headers: {
-        "Cache-Control": "public, s-maxage=10, stale-while-revalidate=30",
+        "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0",
+        "Pragma": "no-cache",
+        "Expires": "0",
       },
     });
   } catch (err: any) {

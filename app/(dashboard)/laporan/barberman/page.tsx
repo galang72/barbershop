@@ -36,7 +36,10 @@ export default function LaporanBarbermanPage() {
   const loadData = async () => {
     if (!_barbermanReportClientCache[cacheKey]) setLoading(true);
     try {
-      const res = await fetch(`/api/barbermen/stats?period=${period}&branch=${branch}`);
+      const res = await fetch(`/api/barbermen/stats?period=${period}&branch=${branch}&_t=${Date.now()}`, {
+        cache: "no-store",
+        headers: { "Pragma": "no-cache", "Cache-Control": "no-cache" },
+      });
       const json = await res.json();
       const list = Array.isArray(json.stats) ? json.stats : [];
       const sum = json.summary || { totalTransactions: 0, totalOmzet: 0, totalCustomers: 0 };

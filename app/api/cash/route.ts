@@ -48,6 +48,7 @@ export async function POST(req: NextRequest) {
     invalidateCache("cash");
     invalidateCache("dashboard");
     invalidateCache("reports");
+    invalidateCache("reports");
 
     return NextResponse.json({
       success: true,
@@ -73,6 +74,7 @@ export async function PUT(req: NextRequest) {
 
     invalidateCache("cash");
     invalidateCache("dashboard");
+    invalidateCache("reports");
 
     return NextResponse.json({
       success: true,

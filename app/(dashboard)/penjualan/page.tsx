@@ -28,7 +28,10 @@ export default function PenjualanPage() {
   const fetchDaily = async () => {
     if (!_penjualanClientCache) setLoading(true);
     try {
-      const res = await fetch(`/api/reports/daily`);
+      const res = await fetch(`/api/reports/daily?_t=${Date.now()}`, {
+        cache: "no-store",
+        headers: { "Pragma": "no-cache", "Cache-Control": "no-cache" },
+      });
       const json = await res.json();
       setDailyData(json);
       _penjualanClientCache = json;

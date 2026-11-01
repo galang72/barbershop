@@ -16,12 +16,13 @@ export async function GET(req: NextRequest) {
     // Backend Authorization: Admin Telkom -> 'Telkom', Admin Suta -> 'Suta', Owner -> searchParam or 'All'
     const branch = resolveBranchFilter(session, searchParams.get("branch"));
 
-    const cacheKey = `dashboard:${filter}:${start || ""}:${end || ""}:${branch || "all"}`;
-    const data = await withCache(cacheKey, () => getDashboardData(filter, start, end, branch), TTL.DASHBOARD);
+    const data = await getDashboardData(filter, start, end, branch);
 
     return NextResponse.json(data, {
       headers: {
-        "Cache-Control": "public, s-maxage=5, stale-while-revalidate=15",
+        "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0",
+        "Pragma": "no-cache",
+        "Expires": "0",
       },
     });
   } catch (error: any) {

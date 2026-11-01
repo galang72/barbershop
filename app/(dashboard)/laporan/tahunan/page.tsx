@@ -25,7 +25,10 @@ export default function LaporanTahunanPage() {
   const fetchAnnual = async () => {
     if (!_annualReportClientCache[selectedYear]) setLoading(true);
     try {
-      const res = await fetch(`/api/reports/annual?year=${selectedYear}`);
+      const res = await fetch(`/api/reports/annual?year=${selectedYear}&_t=${Date.now()}`, {
+        cache: "no-store",
+        headers: { "Pragma": "no-cache", "Cache-Control": "no-cache" },
+      });
       const json = await res.json();
       _annualReportClientCache[selectedYear] = json;
       setAnnualData(json);

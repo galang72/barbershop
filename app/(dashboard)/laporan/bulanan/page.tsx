@@ -31,7 +31,10 @@ export default function LaporanBulananPage() {
   const fetchMonthly = async () => {
     if (!_monthlyReportClientCache[cacheKey]) setLoading(true);
     try {
-      const res = await fetch(`/api/reports/monthly?year=${selectedYear}&month=${selectedMonth}`);
+      const res = await fetch(`/api/reports/monthly?year=${selectedYear}&month=${selectedMonth}&_t=${Date.now()}`, {
+        cache: "no-store",
+        headers: { "Pragma": "no-cache", "Cache-Control": "no-cache" },
+      });
       const json = await res.json();
       _monthlyReportClientCache[cacheKey] = json;
       setData(json);
