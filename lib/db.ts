@@ -249,6 +249,13 @@ export async function ensureSupabaseSchema(): Promise<void> {
 }
 
 export async function seedDemoTransactionsToSupabase(): Promise<{ count: number }> {
+  // AUTO-SEED DISABLED: Fungsi ini dinonaktifkan untuk mode operasional.
+  // Data demo tidak akan disuntikkan secara otomatis ke Supabase.
+  console.log("⚠️ [seedDemoTransactionsToSupabase] Auto-seed dinonaktifkan (mode operasional).");
+  return { count: 0 };
+
+  // --- KODE ASLI (tidak aktif) ---
+  // eslint-disable-next-line no-unreachable
   try {
     const dbPath = path.join(process.cwd(), "data", "local-db.json");
     if (!fs.existsSync(dbPath)) return { count: 0 };
@@ -385,14 +392,11 @@ async function _doEnsureSchema(): Promise<void> {
     // Actually: check a fast way — if users table has admin rows, schema is already set up.
     const existingUserCount = await prisma.user.count().catch(() => -1);
     if (existingUserCount > 0) {
-      // Check if transactions need demo seed
+      // AUTO-SEED DISABLED: Tidak menyemai data demo secara otomatis.
+      // Transaksi akan diisi oleh admin secara operasional.
       const txCount = await prisma.transaction.count().catch(() => -1);
-      if (txCount === 0) {
-        console.log("🌱 Menyemai data demo transaksi ke Supabase...");
-        await seedDemoTransactionsToSupabase();
-      }
       globalForSchema.__ad_schema_ensured = true;
-      console.log("⚡ ensureSupabaseSchema: skip (DB already seeded, users=" + existingUserCount + ", tx=" + txCount + ")");
+      console.log("⚡ ensureSupabaseSchema: skip (DB already set up, users=" + existingUserCount + ", tx=" + txCount + ")");
       return;
     }
 
