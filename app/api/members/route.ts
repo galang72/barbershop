@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMembers, createMember, extendMember, deleteMember, updateMember, getMemberDetail } from "@/lib/db";
 import { invalidateCache } from "@/lib/cache";
+import { getAdminSession } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +30,14 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const session = await getAdminSession();
+    if (session?.role === "OWNER") {
+      return NextResponse.json(
+        { error: "Akses Ditolak: Role Owner hanya bertugas untuk Monitoring dan Laporan, tidak dapat mendaftarkan member baru." },
+        { status: 403 }
+      );
+    }
+
     const body = await req.json();
     if (!body.name || !body.packageName || !body.durationDays) {
       return NextResponse.json({ error: "Nama, paket, dan durasi member wajib diisi" }, { status: 400 });
@@ -52,6 +61,14 @@ export async function POST(req: NextRequest) {
 
 export async function PUT(req: NextRequest) {
   try {
+    const session = await getAdminSession();
+    if (session?.role === "OWNER") {
+      return NextResponse.json(
+        { error: "Akses Ditolak: Role Owner tidak dapat mengedit data member." },
+        { status: 403 }
+      );
+    }
+
     const body = await req.json();
     if (body.additionalDays !== undefined) {
       // Perpanjangan masa aktif
@@ -79,6 +96,14 @@ export async function PUT(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
+    const session = await getAdminSession();
+    if (session?.role === "OWNER") {
+      return NextResponse.json(
+        { error: "Akses Ditolak: Role Owner tidak dapat menghapus data member." },
+        { status: 403 }
+      );
+    }
+
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
     if (!id) return NextResponse.json({ error: "ID member wajib diisi" }, { status: 400 });

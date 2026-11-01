@@ -217,6 +217,11 @@ model Booking {
   bookingTime   String        @map("booking_time")
   notes         String?
   status        BookingStatus @default(PENDING)
+  branch        String?       @default("Telkom")
+  dpAmount      Float?        @default(20000) @map("dp_amount")
+  dpStatus      String?       @default("BELUM_BAYAR") @map("dp_status")
+  dpMethod      String?       @map("dp_method")
+  dpPaidAt      DateTime?     @map("dp_paid_at")
   createdAt     DateTime      @default(now()) @map("created_at")
   updatedAt     DateTime      @updatedAt @map("updated_at")
 

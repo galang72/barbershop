@@ -232,7 +232,12 @@ export default function KasirPage() {
     }
 
     // 4. Catat booking DP pada notes
-    setNotes(`Melanjutkan Booking: ${bk.customerName} (${bk.bookingTime || "Hari ini"}), DP Rp 20.000 sudah terbayar.`);
+    const isDp = bk.dpStatus === "SUDAH_DIBAYAR" || (bk.dpPaid && bk.dpPaid > 0);
+    setNotes(
+      `Melanjutkan Booking: ${bk.customerName} (${bk.bookingTime || "Hari ini"})${
+        isDp ? ", DP Rp 20.000 sudah terbayar." : ", Belum bayar DP."
+      }`
+    );
     setBookingModalOpen(false);
   };
 
@@ -357,8 +362,11 @@ export default function KasirPage() {
   // Diskon otomatis member 10% khusus potong rambut
   const memberDiscountAmount = selectedMember ? Math.round(qualifyingHaircutSubtotal * 0.10) : 0;
 
-  // Potongan DP Booking Rp 20.000 jika ada booking aktif
-  const bookingDpAmount = selectedBooking ? 20000 : 0;
+  // Potongan DP Booking Rp 20.000 HANYA JIKA DP sudah berstatus SUDAH_DIBAYAR
+  const isBookingDpPaid = selectedBooking
+    ? (selectedBooking.dpStatus === "SUDAH_DIBAYAR" || (selectedBooking.dpPaid && selectedBooking.dpPaid > 0))
+    : false;
+  const bookingDpAmount = isBookingDpPaid ? 20000 : 0;
 
   // Diskon manual dari kasir
   const manualDiscountAmount =
@@ -1088,10 +1096,16 @@ export default function KasirPage() {
               )}
 
               {/* Booking DP Banner */}
-              {selectedBooking && (
+              {selectedBooking && isBookingDpPaid && (
                 <div className="p-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center justify-between font-bold">
                   <span>Potongan DP Booking:</span>
                   <span className="text-emerald-700">-Rp 20.000</span>
+                </div>
+              )}
+              {selectedBooking && !isBookingDpPaid && (
+                <div className="p-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs flex items-center justify-between font-semibold">
+                  <span>Booking Belum Bayar DP:</span>
+                  <span className="text-amber-700">Tagihan Normal</span>
                 </div>
               )}
 
@@ -1382,9 +1396,15 @@ export default function KasirPage() {
                       <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">
                         Jam {bk.bookingTime}
                       </span>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
-                        DP Rp 20.000 Lunas
-                      </span>
+                      {bk.dpStatus === "SUDAH_DIBAYAR" || (bk.dpPaid && bk.dpPaid > 0) ? (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                          DP Rp 20.000 Dibayar
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">
+                          Belum Bayar DP
+                        </span>
+                      )}
                     </div>
                     <div className="text-xs text-slate-600 flex flex-wrap items-center gap-3">
                       <span>💈 Barber: <strong>{bk.barberman?.name || "-"}</strong></span>

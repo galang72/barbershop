@@ -421,7 +421,9 @@ async function _doEnsureSchema(): Promise<void> {
     try { await prisma.$executeRawUnsafe(`ALTER TABLE "customers" ADD COLUMN IF NOT EXISTS "notes" TEXT`); } catch {}
     try { await prisma.$executeRawUnsafe(`ALTER TABLE "bookings" ADD COLUMN IF NOT EXISTS "branch" TEXT DEFAULT 'Telkom'`); } catch {}
     try { await prisma.$executeRawUnsafe(`ALTER TABLE "bookings" ADD COLUMN IF NOT EXISTS "dp_amount" DOUBLE PRECISION DEFAULT 20000`); } catch {}
-    try { await prisma.$executeRawUnsafe(`ALTER TABLE "bookings" ADD COLUMN IF NOT EXISTS "dp_status" TEXT DEFAULT 'SUDAH_DIBAYAR'`); } catch {}
+    try { await prisma.$executeRawUnsafe(`ALTER TABLE "bookings" ADD COLUMN IF NOT EXISTS "dp_status" TEXT DEFAULT 'BELUM_BAYAR'`); } catch {}
+    try { await prisma.$executeRawUnsafe(`ALTER TABLE "bookings" ADD COLUMN IF NOT EXISTS "dp_method" TEXT`); } catch {}
+    try { await prisma.$executeRawUnsafe(`ALTER TABLE "bookings" ADD COLUMN IF NOT EXISTS "dp_paid_at" TIMESTAMP`); } catch {}
 
     // 2. Users — selalu upsert (pastikan password & role selalu benar)
     const passwordHash = "$2a$10$cS0SEMAI7ePLiuHs/VlGv.H0weDyjirNgwDGA16tWZewUErJADc7i"; // admin123
@@ -2657,7 +2659,9 @@ export async function updateMember(id: string, data: {
   phone?: string | null;
   packageName?: string;
   status?: "ACTIVE" | "EXPIRED" | "INACTIVE";
+  startDate?: Date | string;
   endDate?: Date | string;
+  customerId?: string | null;
 }) {
   const dbUrl = process.env.DATABASE_URL || "";
   const hasPersistentDb = !!dbUrl && !dbUrl.includes("[YOUR-") && !dbUrl.includes("placeholder");
@@ -2667,7 +2671,9 @@ export async function updateMember(id: string, data: {
   if (data.phone !== undefined) updateData.phone = data.phone?.trim() || null;
   if (data.packageName !== undefined) updateData.packageName = data.packageName;
   if (data.status !== undefined) updateData.status = data.status;
+  if (data.startDate !== undefined) updateData.startDate = new Date(data.startDate);
   if (data.endDate !== undefined) updateData.endDate = new Date(data.endDate);
+  if (data.customerId !== undefined) updateData.customerId = data.customerId || null;
 
   if (hasPersistentDb) {
     if (!(await isDatabaseConnected())) throw new Error("Database Supabase tidak terhubung.");
@@ -2782,6 +2788,10 @@ export async function getBookings(dateStr?: string, branch?: string) {
       where.bookingDate = { gte: targetStart, lte: targetEnd };
     }
 
+    if (branch && branch !== "All") {
+      where.branch = branch;
+    }
+
     const rows = await prisma.booking.findMany({
       where,
       include: {
@@ -2792,21 +2802,20 @@ export async function getBookings(dateStr?: string, branch?: string) {
       orderBy: { bookingTime: "asc" },
     }).catch(() => []);
 
-    const mapped = rows.map((b: any) => {
+    return rows.map((b: any) => {
       const bBranch = b.branch || b.barberman?.workingBranch || b.barberman?.branch || "Telkom";
+      const dpStatus = b.dpStatus || "BELUM_BAYAR";
+      const isPaid = dpStatus === "SUDAH_DIBAYAR" || dpStatus === "LUNAS";
       return {
         ...b,
         branch: bBranch,
-        dpPaid: 20000,
-        dpAmount: 20000,
-        dpStatus: b.dpStatus || "SUDAH_DIBAYAR",
+        dpStatus,
+        dpAmount: Number(b.dpAmount ?? 20000),
+        dpPaid: isPaid ? Number(b.dpAmount ?? 20000) : 0,
+        dpMethod: b.dpMethod || null,
+        dpPaidAt: b.dpPaidAt || null,
       };
     });
-
-    if (branch && branch !== "All") {
-      return mapped.filter((b: any) => b.branch === branch);
-    }
-    return mapped;
   }
 
   await initMemoryDBIfNeeded();
@@ -2815,12 +2824,17 @@ export async function getBookings(dateStr?: string, branch?: string) {
   let list = (memoryDB.bookings || []).map((b) => {
     const barber = memoryDB.barbermen.find((bar) => bar.id === b.barbermanId) || null;
     const bBranch = b.branch || barber?.workingBranch || barber?.branch || "Telkom";
+    const dpStatus = b.dpStatus || "BELUM_BAYAR";
+    const isPaid = dpStatus === "SUDAH_DIBAYAR" || dpStatus === "LUNAS";
     return {
       ...b,
       branch: bBranch,
       barberman: barber,
       service: memoryDB.services.find((s) => s.id === b.serviceId) || null,
       customer: memoryDB.customers.find((c) => c.id === b.customerId) || null,
+      dpStatus,
+      dpAmount: Number(b.dpAmount ?? 20000),
+      dpPaid: isPaid ? Number(b.dpAmount ?? 20000) : 0,
     };
   });
 
@@ -2839,15 +2853,139 @@ export async function getBookings(dateStr?: string, branch?: string) {
   return list.sort((a, b) => (a.bookingTime || "").localeCompare(b.bookingTime || ""));
 }
 
-export async function createBooking(data: any) {
+export async function createBooking(data: {
+  customerId?: string | null;
+  customerName: string;
+  customerPhone?: string | null;
+  barbermanId: string;
+  serviceId: string;
+  bookingDate: Date | string;
+  bookingTime: string;
+  branch?: string | null;
+  notes?: string | null;
+  status?: string | null;
+  dpStatus?: string | null;
+  dpAmount?: number | null;
+  dpMethod?: string | null;
+}) {
+  const dbUrl = process.env.DATABASE_URL || "";
+  const hasPersistentDb = !!dbUrl && !dbUrl.includes("[YOUR-") && !dbUrl.includes("placeholder");
+
+  const cleanName = data.customerName.trim();
+  const cleanPhone = data.customerPhone?.trim() || null;
+  const targetBranch = data.branch || "Telkom";
+  const targetDate = new Date(data.bookingDate);
+  const dpAmount = Number(data.dpAmount || 20000);
+  const dpStatus = data.dpStatus || "BELUM_BAYAR";
+  const dpMethod = dpStatus === "SUDAH_DIBAYAR" ? (data.dpMethod || "CASH") : null;
+  const dpPaidAt = dpStatus === "SUDAH_DIBAYAR" ? new Date() : null;
+  const bookingStatus = (data.status || "CONFIRMED") as any;
+
+  if (hasPersistentDb) {
+    if (!(await isDatabaseConnected())) throw new Error("Database Supabase tidak terhubung.");
+
+    // 1. CEGAH DOUBLE BOOKING: Barber yang sama, tanggal yang sama, jam yang sama
+    const dayStart = startOfDay(targetDate);
+    const dayEnd = endOfDay(targetDate);
+    const duplicate = await prisma.booking.findFirst({
+      where: {
+        barbermanId: data.barbermanId,
+        bookingDate: { gte: dayStart, lte: dayEnd },
+        bookingTime: data.bookingTime,
+        status: { notIn: ["CANCELLED", "NO_SHOW"] as any },
+      },
+    });
+
+    if (duplicate) {
+      const barber = await prisma.barberman.findUnique({ where: { id: data.barbermanId } });
+      throw new Error(`Slot waktu ${data.bookingTime} untuk barberman ${barber?.name || ""} sudah terisi. Silakan pilih jam atau barberman lain.`);
+    }
+
+    // 2. Hubungkan Customer (Cegah customer duplikat)
+    let cust: any = null;
+    if (data.customerId) {
+      cust = await prisma.customer.findUnique({ where: { id: data.customerId } });
+    }
+    if (!cust) {
+      const orConditions: any[] = [{ name: { equals: cleanName, mode: "insensitive" } }];
+      if (cleanPhone) orConditions.push({ phone: cleanPhone });
+      cust = await prisma.customer.findFirst({ where: { OR: orConditions } });
+    }
+    if (!cust) {
+      cust = await prisma.customer.create({
+        data: {
+          id: `cst_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          name: cleanName,
+          phone: cleanPhone,
+          branch: targetBranch,
+          totalVisits: 0,
+          totalSpend: 0,
+        },
+      });
+    }
+
+    // 3. Simpan ke database Supabase secara permanen
+    const newB = await prisma.booking.create({
+      data: {
+        id: `bkg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        customerId: cust.id,
+        customerName: cleanName,
+        customerPhone: cleanPhone,
+        barbermanId: data.barbermanId,
+        serviceId: data.serviceId,
+        branch: targetBranch,
+        bookingDate: targetDate,
+        bookingTime: data.bookingTime,
+        notes: data.notes || null,
+        status: bookingStatus,
+        dpAmount,
+        dpStatus,
+        dpMethod,
+        dpPaidAt,
+      },
+      include: {
+        customer: true,
+        barberman: true,
+        service: true,
+      },
+    });
+
+    // 4. Catat pemasukan DP pada kas cabang jika berstatus SUDAH_DIBAYAR
+    if (dpStatus === "SUDAH_DIBAYAR") {
+      await prisma.cashTransaction.create({
+        data: {
+          id: `csh_dp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          type: "CASH_IN",
+          category: "DP Booking",
+          amount: dpAmount,
+          description: `DP Booking ${newB.id} - ${cleanName} (${targetBranch}) - ${dpMethod}`,
+          source: "DP_BOOKING",
+          branch: targetBranch,
+        },
+      }).catch(() => {});
+    }
+
+    await recordActivity({
+      action: "BOOKING_BARU",
+      description: `Booking baru ${newB.id}: ${cleanName} (${data.bookingTime}) di Cabang ${targetBranch} [DP: ${dpStatus}]`,
+      branch: targetBranch,
+      actor: cleanName,
+    });
+
+    return {
+      ...newB,
+      dpPaid: dpStatus === "SUDAH_DIBAYAR" ? dpAmount : 0,
+    };
+  }
+
+  // Memory fallback
   await initMemoryDBIfNeeded();
   syncFromLocalDB();
 
-  // AP. CEGAH DOUBLE BOOKING: Barber yang sama, tanggal yang sama, jam yang sama
   const targetDateStr = new Date(data.bookingDate).toISOString().split("T")[0];
-  const duplicate = memoryDB.bookings.find((b: any) => {
+  const duplicate = (memoryDB.bookings || []).find((b: any) => {
     if (b.barbermanId !== data.barbermanId) return false;
-    if (b.status === "CANCELLED" || b.status === "RESCHEDULE") return false;
+    if (b.status === "CANCELLED" || b.status === "NO_SHOW") return false;
     const bDateStr = new Date(b.bookingDate).toISOString().split("T")[0];
     return bDateStr === targetDateStr && b.bookingTime === data.bookingTime;
   });
@@ -2856,120 +2994,194 @@ export async function createBooking(data: any) {
     throw new Error("Slot barber tersebut sudah terisi. Silakan pilih waktu atau barber lain.");
   }
 
-  const barber = memoryDB.barbermen.find((b) => b.id === data.barbermanId);
-  const targetBranch = data.branch || barber?.workingBranch || barber?.branch || "Telkom";
+  const barber = (memoryDB.barbermen || []).find((b: any) => b.id === data.barbermanId);
+  const targetBranchFallback = data.branch || barber?.workingBranch || barber?.branch || "Telkom";
 
   const newB = {
     id: `bkg_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-    customerName: data.customerName.trim(),
-    customerPhone: data.customerPhone?.trim() || null,
+    customerName: cleanName,
+    customerPhone: cleanPhone,
     barbermanId: data.barbermanId,
     serviceId: data.serviceId,
-    bookingDate: new Date(data.bookingDate),
+    bookingDate: targetDate,
     bookingTime: data.bookingTime,
     notes: data.notes || null,
-    branch: targetBranch,
-    dpPaid: 20000,
-    dpAmount: 20000,
-    dpStatus: data.dpStatus || "SUDAH_DIBAYAR",
-    status: data.status || "CONFIRMED",
+    branch: targetBranchFallback,
+    dpPaid: dpStatus === "SUDAH_DIBAYAR" ? dpAmount : 0,
+    dpAmount,
+    dpStatus,
+    dpMethod,
+    dpPaidAt,
+    status: bookingStatus,
     createdAt: new Date(),
   };
 
+  if (!memoryDB.bookings) memoryDB.bookings = [];
   memoryDB.bookings.unshift(newB);
-
-  await recordActivity({
-    action: "BOOKING_BARU",
-    description: `Booking baru untuk ${newB.customerName} (${newB.bookingTime}) di Cabang ${targetBranch} dengan DP Rp20.000`,
-    branch: targetBranch,
-    actor: newB.customerName,
-  });
-
-  // DUAL-WRITE ke Supabase
-  try {
-    if (process.env.DATABASE_URL && !process.env.DATABASE_URL.includes("[YOUR-")) {
-      await prisma.booking.create({
-        data: {
-          id: newB.id,
-          customerName: newB.customerName,
-          customerPhone: newB.customerPhone || undefined,
-          barbermanId: newB.barbermanId,
-          serviceId: newB.serviceId,
-          bookingDate: new Date(newB.bookingDate),
-          bookingTime: newB.bookingTime,
-          notes: newB.notes || undefined,
-          status: (newB.status === "TERLAMBAT" || newB.status === "RESCHEDULE" ? "CONFIRMED" : newB.status) as any,
-        },
-      }).catch((e: any) => console.warn("⚠️ [createBooking] Prisma create:", e?.message));
-    }
-  } catch {}
-
   saveLocalDB();
   return newB;
 }
 
-export async function updateBookingStatus(id: string, status: any, options?: any) {
-  await initMemoryDBIfNeeded();
-  syncFromLocalDB();
+export async function updateBooking(id: string, data: any) {
+  const dbUrl = process.env.DATABASE_URL || "";
+  const hasPersistentDb = !!dbUrl && !dbUrl.includes("[YOUR-") && !dbUrl.includes("placeholder");
 
-  const b = memoryDB.bookings.find((item) => item.id === id);
-  if (!b) throw new Error("Booking tidak ditemukan");
+  if (hasPersistentDb) {
+    if (!(await isDatabaseConnected())) throw new Error("Database Supabase tidak terhubung.");
+    const existing = await prisma.booking.findUnique({ where: { id }, include: { customer: true } });
+    if (!existing) throw new Error("Booking tidak ditemukan.");
 
-  const prevStatus = b.status;
-  b.status = status;
+    const updateData: any = {};
+    if (data.customerName !== undefined) updateData.customerName = data.customerName.trim();
+    if (data.customerPhone !== undefined) updateData.customerPhone = data.customerPhone?.trim() || null;
+    if (data.barbermanId !== undefined) updateData.barbermanId = data.barbermanId;
+    if (data.serviceId !== undefined) updateData.serviceId = data.serviceId;
+    if (data.branch !== undefined) updateData.branch = data.branch;
+    if (data.bookingTime !== undefined) updateData.bookingTime = data.bookingTime;
+    if (data.notes !== undefined) updateData.notes = data.notes;
+    if (data.status !== undefined) updateData.status = data.status as any;
 
-  // AJ, AK, AL. RESCHEDULE & NO_SHOW: DP Rp 20.000 HANGUS
-  if (status === "RESCHEDULE" || status === "NO_SHOW") {
-    b.dpStatus = "HANGUS";
-    b.status = status;
+    if (data.bookingDate !== undefined) {
+      updateData.bookingDate = new Date(data.bookingDate);
+    }
+
+    // Double booking check jika jam, tgl, atau barberman berubah
+    const newBarbermanId = updateData.barbermanId || existing.barbermanId;
+    const newDate = updateData.bookingDate || existing.bookingDate;
+    const newTime = updateData.bookingTime || existing.bookingTime;
+    if (
+      (updateData.barbermanId && updateData.barbermanId !== existing.barbermanId) ||
+      (updateData.bookingDate && updateData.bookingDate.getTime() !== existing.bookingDate.getTime()) ||
+      (updateData.bookingTime && updateData.bookingTime !== existing.bookingTime)
+    ) {
+      const dayStart = startOfDay(new Date(newDate));
+      const dayEnd = endOfDay(new Date(newDate));
+      const duplicate = await prisma.booking.findFirst({
+        where: {
+          id: { not: id },
+          barbermanId: newBarbermanId,
+          bookingDate: { gte: dayStart, lte: dayEnd },
+          bookingTime: newTime,
+          status: { notIn: ["CANCELLED", "NO_SHOW"] as any },
+        },
+      });
+      if (duplicate) {
+        throw new Error(`Slot waktu ${newTime} untuk barberman tersebut sudah terisi.`);
+      }
+    }
+
+    const targetBranch = updateData.branch || existing.branch || "Telkom";
+    const customerName = updateData.customerName || existing.customerName;
+
+    // Reschedule / No Show / Cancel: DP Hangus sesuai kebijakan
+    if (data.status === "RESCHEDULE" || data.status === "NO_SHOW" || data.status === "CANCELLED") {
+      updateData.dpStatus = "HANGUS";
+    } else if (data.status === "TERLAMBAT") {
+      // Terlambat (toleransi 15 menit): DP TIDAK HANGUS
+      if (existing.dpStatus === "SUDAH_DIBAYAR") {
+        updateData.dpStatus = "SUDAH_DIBAYAR";
+      }
+    } else if (data.dpStatus !== undefined) {
+      updateData.dpStatus = data.dpStatus;
+    }
+
+    if (data.dpMethod !== undefined) updateData.dpMethod = data.dpMethod;
+
+    // Jika DP baru dikonfirmasi menjadi SUDAH_DIBAYAR:
+    if (updateData.dpStatus === "SUDAH_DIBAYAR" && existing.dpStatus !== "SUDAH_DIBAYAR") {
+      updateData.dpPaidAt = new Date();
+      updateData.dpAmount = 20000;
+      // CEGAH PENCATATAN GANDA: periksa apakah transaksi kas sudah pernah dibuat
+      const existingCash = await prisma.cashTransaction.findFirst({
+        where: {
+          source: "DP_BOOKING",
+          description: { contains: id },
+        },
+      });
+      if (!existingCash) {
+        await prisma.cashTransaction.create({
+          data: {
+            id: `csh_dp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+            type: "CASH_IN",
+            category: "DP Booking",
+            amount: 20000,
+            description: `DP Booking ${id} - ${customerName} (${targetBranch}) - ${data.dpMethod || existing.dpMethod || "CASH"}`,
+            source: "DP_BOOKING",
+            branch: targetBranch,
+          },
+        }).catch(() => {});
+      }
+    }
+
+    const updated = await prisma.booking.update({
+      where: { id },
+      data: updateData,
+      include: { customer: true, barberman: true, service: true },
+    });
+
     await recordActivity({
-      action: status === "RESCHEDULE" ? "BOOKING_RESCHEDULE" : "BOOKING_NO_SHOW",
-      description: `Booking ${b.customerName} status ${status}: DP Rp20.000 dinyatakan HANGUS sesuai aturan.`,
-      branch: b.branch || "Telkom",
+      action: "UPDATE_BOOKING",
+      description: `Update Booking ${id} (${customerName}) - Status: ${updated.status}, DP: ${updated.dpStatus}`,
+      branch: targetBranch,
       actor: "Admin",
     });
-  } else if (status === "TERLAMBAT") {
-    // AH & AI. TERLAMBAT DI HARI-H (toleransi 15 menit): DP TIDAK HANGUS, tetap dapat dilayani jika ada slot kosong
-    b.status = "TERLAMBAT";
-    b.dpStatus = "SUDAH_DIBAYAR"; // DP TETAP AMAN / BERLAKU
-    await recordActivity({
-      action: "BOOKING_TERLAMBAT",
-      description: `Customer ${b.customerName} terlambat datang (>15 menit). Status Terlambat, DP Rp20.000 TIDAK HANGUS (tetap berlaku jika ada slot kosong).`,
-      branch: b.branch || "Telkom",
-      actor: "Admin",
-    });
-  } else if (status === "SUDAH_DIBAYAR" || status === "VERIFIKASI_DP") {
-    b.dpStatus = "SUDAH_DIBAYAR";
-    b.status = "CONFIRMED";
-    await recordActivity({
-      action: "VERIFIKASI_DP",
-      description: `Verifikasi pembayaran DP Rp20.000 untuk ${b.customerName} berhasil (LUNAS).`,
-      branch: b.branch || "Telkom",
-      actor: "Admin",
-    });
-  } else {
-    await recordActivity({
-      action: "UPDATE_STATUS_BOOKING",
-      description: `Status booking ${b.customerName} diubah dari ${prevStatus} menjadi ${status}`,
-      branch: b.branch || "Telkom",
-      actor: "Admin",
-    });
+
+    return {
+      ...updated,
+      dpPaid: (updated.dpStatus === "SUDAH_DIBAYAR" || updated.dpStatus === "LUNAS") ? (updated.dpAmount ?? 20000) : 0,
+    };
   }
 
-  // DUAL-WRITE ke Supabase
-  try {
-    if (process.env.DATABASE_URL && !process.env.DATABASE_URL.includes("[YOUR-")) {
-      const prismaStatus = (b.status === "TERLAMBAT" || b.status === "RESCHEDULE" || b.status === "HANGUS" || b.status === "VERIFIKASI_DP" || b.status === "SUDAH_DIBAYAR")
-        ? "CONFIRMED" : b.status;
-      await prisma.booking.update({
-        where: { id },
-        data: { status: prismaStatus as any },
-      }).catch((e: any) => console.warn("⚠️ [updateBookingStatus] Prisma update:", e?.message));
-    }
-  } catch {}
-
+  // Memory fallback
+  await initMemoryDBIfNeeded();
+  syncFromLocalDB();
+  const idx = (memoryDB.bookings || []).findIndex((b: any) => b.id === id);
+  if (idx === -1) throw new Error("Booking tidak ditemukan");
+  memoryDB.bookings[idx] = { ...memoryDB.bookings[idx], ...data };
   saveLocalDB();
-  return b;
+  return memoryDB.bookings[idx];
+}
+
+export async function deleteBooking(id: string) {
+  const dbUrl = process.env.DATABASE_URL || "";
+  const hasPersistentDb = !!dbUrl && !dbUrl.includes("[YOUR-") && !dbUrl.includes("placeholder");
+
+  if (hasPersistentDb) {
+    if (!(await isDatabaseConnected())) throw new Error("Database Supabase tidak terhubung.");
+    const existing = await prisma.booking.findUnique({ where: { id } });
+    if (!existing) throw new Error("Booking tidak ditemukan.");
+
+    // Booking yang sudah selesai / jadi transaksi dilindungi dari penghapusan
+    if (existing.status === "COMPLETED") {
+      throw new Error("Booking yang sudah selesai (COMPLETED) tidak dapat dihapus untuk melindungi integritas transaksi kasir.");
+    }
+
+    await prisma.booking.delete({ where: { id } });
+
+    await recordActivity({
+      action: "HAPUS_BOOKING",
+      description: `Hapus booking ${id} (${existing.customerName}, ${existing.bookingTime}) di Cabang ${existing.branch || "Telkom"}`,
+      branch: existing.branch || "Telkom",
+      actor: "Admin",
+    });
+
+    return { success: true };
+  }
+
+  await initMemoryDBIfNeeded();
+  syncFromLocalDB();
+  const idx = (memoryDB.bookings || []).findIndex((b: any) => b.id === id);
+  if (idx === -1) throw new Error("Booking tidak ditemukan");
+  if (memoryDB.bookings[idx].status === "COMPLETED") {
+    throw new Error("Booking yang sudah selesai (COMPLETED) tidak dapat dihapus untuk melindungi riwayat keuangan.");
+  }
+  memoryDB.bookings.splice(idx, 1);
+  saveLocalDB();
+  return { success: true };
+}
+
+export async function updateBookingStatus(id: string, status: any) {
+  return await updateBooking(id, { status });
 }
 
 // -------------------------------------------------------------
@@ -3092,14 +3304,26 @@ export async function processCheckout(payload: CheckoutPayload & { branch?: stri
 
   // Diskon Member 10% dihitung hanya dari subtotal potong rambut
   const memberDiscount = activeMember ? Math.round(qualifyingHaircutSubtotal * 0.10) : 0;
-  const bookingDpDiscount = (payload.bookingId || (payload.dpAmount && payload.dpAmount > 0)) ? 20000 : 0;
+
+  // Cek apakah booking memiliki DP yang SUDAH DIBAYAR
+  let isDpPaid = false;
+  if (payload.bookingId) {
+    const bkg = await prisma.booking.findUnique({ where: { id: payload.bookingId } }).catch(() => null);
+    if (bkg && (bkg.dpStatus === "SUDAH_DIBAYAR" || bkg.dpStatus === "LUNAS" || (bkg.dpAmount && bkg.dpAmount > 0 && bkg.dpStatus !== "BELUM_BAYAR"))) {
+      isDpPaid = true;
+    }
+  } else if (payload.dpAmount && payload.dpAmount > 0) {
+    isDpPaid = true;
+  }
+  const bookingDpDiscount = isDpPaid ? 20000 : 0;
 
   // Gabungkan diskon dengan aman tanpa duplikasi
+  // DP mengurangi tagihan SETELAH diskon member dihitung
   let calculatedDiscount = memberDiscount + bookingDpDiscount;
   if (payload.discount > calculatedDiscount) {
     // Kasir memasukkan diskon manual tambahan
     calculatedDiscount = Math.min(payload.subtotal, payload.discount);
-  } else if (!activeMember && !payload.bookingId && !payload.dpAmount) {
+  } else if (!activeMember && !isDpPaid) {
     calculatedDiscount = Math.max(0, Math.min(payload.subtotal, payload.discount || 0));
   }
 
@@ -3107,9 +3331,15 @@ export async function processCheckout(payload: CheckoutPayload & { branch?: stri
   payload.discount = calculatedDiscount;
   payload.grandTotal = calculatedGrandTotal;
 
+  const notesTags: string[] = [];
   if (activeMember && memberDiscount > 0) {
-    const memberTag = `[Member ${activeMember.memberCode}: Diskon 10% Haircut Rp ${memberDiscount.toLocaleString("id-ID")}]`;
-    payload.notes = payload.notes ? `${payload.notes} | ${memberTag}` : memberTag;
+    notesTags.push(`[Member ${activeMember.memberCode}: Diskon 10% Haircut Rp ${memberDiscount.toLocaleString("id-ID")}]`);
+  }
+  if (isDpPaid) {
+    notesTags.push(`[DP Booking Rp 20.000 telah diperhitungkan]`);
+  }
+  if (notesTags.length > 0) {
+    payload.notes = payload.notes ? `${payload.notes} | ${notesTags.join(" | ")}` : notesTags.join(" | ");
   }
 
   const totalVisits = (cust?.totalVisits || 0) + 1;
@@ -3246,7 +3476,7 @@ export async function processCheckout(payload: CheckoutPayload & { branch?: stri
     if (payload.bookingId) {
       await client.booking.update({
         where: { id: payload.bookingId },
-        data: { status: "COMPLETED" },
+        data: { status: "COMPLETED", dpStatus: "LUNAS" },
       }).catch(() => {});
     }
 
