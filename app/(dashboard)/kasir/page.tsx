@@ -65,6 +65,7 @@ export default function KasirPage() {
 
   // Selected Customer (can be existing or new input)
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
+  const [selectedMember, setSelectedMember] = useState<any>(null);
   const [newCustomerName, setNewCustomerName] = useState("");
   const [newCustomerPhone, setNewCustomerPhone] = useState("");
   const [newCustomerInstagram, setNewCustomerInstagram] = useState("");
@@ -150,21 +151,59 @@ export default function KasirPage() {
     }
   };
 
+  const checkCustomerMembership = (cust: any) => {
+    if (!cust) {
+      setSelectedMember(null);
+      return;
+    }
+    if (cust.members && Array.isArray(cust.members) && cust.members.length > 0) {
+      const active = cust.members.find(
+        (m: any) => m.status === "ACTIVE" && new Date(m.endDate) >= new Date()
+      );
+      if (active) {
+        setSelectedMember(active);
+        return;
+      }
+    }
+    const q = cust.phone || cust.name;
+    if (q) {
+      fetch(`/api/members?q=${encodeURIComponent(q)}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (Array.isArray(data)) {
+            const active = data.find(
+              (m: any) =>
+                (m.customerId === cust.id || m.name?.toLowerCase() === cust.name?.toLowerCase()) &&
+                m.status === "ACTIVE" &&
+                new Date(m.endDate) >= new Date()
+            );
+            setSelectedMember(active || null);
+          }
+        })
+        .catch(() => setSelectedMember(null));
+    } else {
+      setSelectedMember(null);
+    }
+  };
+
   const handleSelectBooking = (bk: any) => {
     setSelectedBooking(bk);
 
     // 1. Set Customer data
     if (bk.customer) {
       setSelectedCustomer(bk.customer);
+      checkCustomerMembership(bk.customer);
     } else {
-      setSelectedCustomer({
+      const tempCust = {
         id: bk.customerId || `cst_${Date.now()}`,
         name: bk.customerName,
         phone: bk.customerPhone || null,
         instagram: null,
-      });
+      };
+      setSelectedCustomer(tempCust);
       setNewCustomerName(bk.customerName);
       setNewCustomerPhone(bk.customerPhone || "");
+      checkCustomerMembership(tempCust);
     }
 
     // 2. Set Barberman
@@ -192,11 +231,8 @@ export default function KasirPage() {
       });
     }
 
-    // 4. Auto-deduct DP Rp 20.000
-    setDiscountType("nominal");
-    setDiscountValue(20000);
+    // 4. Catat booking DP pada notes
     setNotes(`Melanjutkan Booking: ${bk.customerName} (${bk.bookingTime || "Hari ini"}), DP Rp 20.000 sudah terbayar.`);
-
     setBookingModalOpen(false);
   };
 
@@ -307,11 +343,30 @@ export default function KasirPage() {
   // Subtotal & Calculations
   const subtotal = cart.reduce((acc, it) => acc + it.subtotal, 0);
 
-  const discountAmount =
+  // Subtotal khusus layanan potong rambut (HAIRCUT) untuk diskon member 10%
+  const qualifyingHaircutSubtotal = cart
+    .filter((it) => {
+      if (it.itemType !== "SERVICE") return false;
+      const srv = services.find((s) => s.id === it.serviceId);
+      const cat = srv?.category || (it as any).category;
+      const nameLower = (it.name || "").toLowerCase();
+      return cat === "HAIRCUT" || nameLower.includes("haircut") || nameLower.includes("potong");
+    })
+    .reduce((acc, it) => acc + it.subtotal, 0);
+
+  // Diskon otomatis member 10% khusus potong rambut
+  const memberDiscountAmount = selectedMember ? Math.round(qualifyingHaircutSubtotal * 0.10) : 0;
+
+  // Potongan DP Booking Rp 20.000 jika ada booking aktif
+  const bookingDpAmount = selectedBooking ? 20000 : 0;
+
+  // Diskon manual dari kasir
+  const manualDiscountAmount =
     discountType === "percent"
       ? Math.round((subtotal * Math.min(100, Math.max(0, discountValue))) / 100)
       : Math.min(subtotal, Math.max(0, discountValue));
 
+  const discountAmount = Math.min(subtotal, memberDiscountAmount + bookingDpAmount + manualDiscountAmount);
   const grandTotal = Math.max(0, subtotal - discountAmount);
   const changeAmount = paymentMethod === "CASH" ? Math.max(0, amountPaid - grandTotal) : 0;
 
@@ -331,6 +386,7 @@ export default function KasirPage() {
     setSearchResults([]);
     setCustomerSearchQuery("");
     setCustomerModalOpen(false);
+    checkCustomerMembership(cust);
   };
 
   const handleSaveNewCustomer = async () => {
@@ -353,23 +409,28 @@ export default function KasirPage() {
       if (res.ok) {
         const created = await res.json();
         setSelectedCustomer(created);
+        checkCustomerMembership(created);
       } else {
-        setSelectedCustomer({
+        const fallback = {
           id: `cst_${Date.now()}`,
           name: newCustomerName.trim(),
           phone: newCustomerPhone.trim() || null,
           instagram: newCustomerInstagram.trim() || null,
           totalVisits: 0,
-        });
+        };
+        setSelectedCustomer(fallback);
+        checkCustomerMembership(fallback);
       }
     } catch {
-      setSelectedCustomer({
+      const fallback = {
         id: `cst_${Date.now()}`,
         name: newCustomerName.trim(),
         phone: newCustomerPhone.trim() || null,
         instagram: newCustomerInstagram.trim() || null,
         totalVisits: 0,
-      });
+      };
+      setSelectedCustomer(fallback);
+      checkCustomerMembership(fallback);
     }
 
     setCustomerModalOpen(false);
@@ -434,6 +495,7 @@ export default function KasirPage() {
 
       setCart([]);
       setSelectedCustomer(null);
+      setSelectedMember(null);
       setSelectedBooking(null);
       setNewCustomerName("");
       setNewCustomerPhone("");
@@ -803,10 +865,17 @@ export default function KasirPage() {
                         <span className="text-slate-400 italic">Nama saja (Walk-in)</span>
                       )}
                     </div>
+                    {selectedMember && (
+                      <div className="mt-1.5 inline-flex items-center gap-1.5 text-[11px] font-bold text-blue-700 bg-blue-50 border border-blue-200 rounded-md px-2 py-0.5">
+                        <CreditCard className="w-3 h-3 text-blue-600" />
+                        <span>Member: {selectedMember.memberCode} ({selectedMember.packageName}) — Diskon 10% Haircut</span>
+                      </div>
+                    )}
                   </div>
                   <button
                     onClick={() => {
                       setSelectedCustomer(null);
+                      setSelectedMember(null);
                       setNewCustomerName("");
                       setNewCustomerPhone("");
                       setNewCustomerInstagram("");
@@ -867,6 +936,11 @@ export default function KasirPage() {
                               <div className="flex-1 min-w-0">
                                 <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
                                   {cust.name}
+                                  {cust.members && cust.members.some((m: any) => m.status === "ACTIVE" && new Date(m.endDate) >= new Date()) && (
+                                    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-blue-600 text-white font-extrabold tracking-wide">
+                                      MEMBER
+                                    </span>
+                                  )}
                                   {cust.totalVisits > 0 && (
                                     <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 font-bold">
                                       {cust.totalVisits}x
@@ -998,9 +1072,32 @@ export default function KasirPage() {
 
             {/* 3. DISCOUNT & SUMMARY */}
             <div className="pt-2 border-t border-slate-100 space-y-2 text-xs">
+              {/* Member Status Banner in Billing */}
+              {selectedMember && (
+                <div className="p-2 rounded-xl bg-blue-50 border border-blue-200 text-blue-800 text-xs flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 font-bold">
+                    <Sparkles className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                    <span>Member: {selectedMember.memberCode}</span>
+                  </div>
+                  <span className="font-extrabold text-blue-700">
+                    {memberDiscountAmount > 0
+                      ? `-10% Haircut (${formatRupiah(memberDiscountAmount)})`
+                      : "10% Haircut (Otomatis saat potong rambut)"}
+                  </span>
+                </div>
+              )}
+
+              {/* Booking DP Banner */}
+              {selectedBooking && (
+                <div className="p-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center justify-between font-bold">
+                  <span>Potongan DP Booking:</span>
+                  <span className="text-emerald-700">-Rp 20.000</span>
+                </div>
+              )}
+
               {/* Discount Input */}
               <div className="flex items-center justify-between gap-2">
-                <span className="text-slate-600 font-medium">Diskon:</span>
+                <span className="text-slate-600 font-medium">Diskon Tambahan (Manual):</span>
                 <div className="flex items-center gap-1.5">
                   <select
                     value={discountType}
@@ -1027,10 +1124,24 @@ export default function KasirPage() {
                 <span className="font-semibold text-slate-900">{formatRupiah(subtotal)}</span>
               </div>
 
-              {discountAmount > 0 && (
+              {memberDiscountAmount > 0 && (
+                <div className="flex justify-between text-blue-600 font-semibold">
+                  <span>Diskon Member 10% (Haircut):</span>
+                  <span>-{formatRupiah(memberDiscountAmount)}</span>
+                </div>
+              )}
+
+              {bookingDpAmount > 0 && (
+                <div className="flex justify-between text-emerald-600 font-semibold">
+                  <span>Potongan DP Booking:</span>
+                  <span>-Rp 20.000</span>
+                </div>
+              )}
+
+              {manualDiscountAmount > 0 && (
                 <div className="flex justify-between text-rose-600 font-semibold">
-                  <span>Potongan Diskon:</span>
-                  <span>-{formatRupiah(discountAmount)}</span>
+                  <span>Diskon Tambahan:</span>
+                  <span>-{formatRupiah(manualDiscountAmount)}</span>
                 </div>
               )}
 

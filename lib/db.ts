@@ -2256,6 +2256,9 @@ export async function getCustomers(query?: string) {
       include: {
         favoriteBarberman: {
           select: { id: true, name: true, nickname: true, branch: true, workingBranch: true }
+        },
+        members: {
+          orderBy: { createdAt: "desc" }
         }
       },
       orderBy: { updatedAt: "desc" },
@@ -2391,6 +2394,38 @@ export async function getCustomerDetail(id: string) {
 
 // MEMBERS
 export async function getMembers(query?: string) {
+  const dbUrl = process.env.DATABASE_URL || "";
+  const hasPersistentDb = !!dbUrl && !dbUrl.includes("[YOUR-") && !dbUrl.includes("placeholder");
+
+  if (hasPersistentDb) {
+    const where: any = {};
+    if (query && query.trim() !== "") {
+      const q = query.trim();
+      where.OR = [
+        { memberCode: { contains: q, mode: "insensitive" } },
+        { name: { contains: q, mode: "insensitive" } },
+        { phone: { contains: q, mode: "insensitive" } },
+        { customer: { name: { contains: q, mode: "insensitive" } } },
+      ];
+    }
+    const members = await prisma.member.findMany({
+      where,
+      include: {
+        customer: true,
+      },
+      orderBy: { createdAt: "desc" },
+    }).catch(() => []);
+
+    const now = new Date();
+    return members.map((m: any) => {
+      const isExpired = new Date(m.endDate) < now;
+      return {
+        ...m,
+        status: isExpired ? "EXPIRED" : m.status,
+      };
+    });
+  }
+
   await initMemoryDBIfNeeded();
   syncFromLocalDB();
 
@@ -2406,68 +2441,324 @@ export async function getMembers(query?: string) {
   }
   return list.map((m) => ({
     ...m,
-    customer: memoryDB.customers.find((c) => c.id === m.customerId) || null,
+    customer: (memoryDB.customers || []).find((c: any) => c.id === m.customerId) || null,
   }));
 }
 
-export async function createMember(data: any) {
-  return safeDb(
-    async () => {
-      return await prisma.member.create({ data });
-    },
-    () => {
-      const newM = {
-        id: `mbr_${Date.now()}`,
-        totalVisits: 0,
-        totalSpend: 0,
-        status: "ACTIVE",
-        createdAt: new Date(),
-        ...data,
+export async function getMemberDetail(id: string) {
+  const dbUrl = process.env.DATABASE_URL || "";
+  const hasPersistentDb = !!dbUrl && !dbUrl.includes("[YOUR-") && !dbUrl.includes("placeholder");
+
+  if (hasPersistentDb) {
+    const member = await prisma.member.findUnique({
+      where: { id },
+      include: {
+        customer: {
+          include: {
+            transactions: {
+              take: 10,
+              orderBy: { createdAt: "desc" },
+              include: { items: true, barberman: true },
+            },
+          },
+        },
+      },
+    }).catch(() => null);
+
+    if (member) {
+      const isExpired = new Date(member.endDate) < new Date();
+      return {
+        ...member,
+        status: isExpired ? "EXPIRED" : member.status,
       };
-      memoryDB.members.push(newM);
-      return newM;
-    },
-    true
+    }
+    return null;
+  }
+
+  await initMemoryDBIfNeeded();
+  syncFromLocalDB();
+  const m = (memoryDB.members || []).find((item: any) => item.id === id);
+  if (!m) return null;
+  const cust = (memoryDB.customers || []).find((c: any) => c.id === m.customerId) || null;
+  const txs = (memoryDB.transactions || []).filter((t: any) => t.customerId === m.customerId);
+  return {
+    ...m,
+    customer: cust ? { ...cust, transactions: txs } : null,
+  };
+}
+
+export async function createMember(data: {
+  name: string;
+  phone?: string | null;
+  packageName: string;
+  durationDays: number;
+  customerId?: string | null;
+}) {
+  const dbUrl = process.env.DATABASE_URL || "";
+  const hasPersistentDb = !!dbUrl && !dbUrl.includes("[YOUR-") && !dbUrl.includes("placeholder");
+
+  const cleanName = data.name.trim();
+  const cleanPhone = data.phone?.trim() || null;
+  const durationDays = Number(data.durationDays || 30);
+  const startDate = new Date();
+  const endDate = new Date(startDate.getTime() + durationDays * 24 * 60 * 60 * 1000);
+
+  if (hasPersistentDb) {
+    if (!(await isDatabaseConnected())) throw new Error("Database Supabase tidak terhubung.");
+
+    // 1. Resolve atau buat Customer di Supabase
+    let cust: any = null;
+    if (data.customerId) {
+      cust = await prisma.customer.findUnique({ where: { id: data.customerId } });
+    }
+    if (!cust) {
+      const orConditions: any[] = [{ name: { equals: cleanName, mode: "insensitive" } }];
+      if (cleanPhone) orConditions.push({ phone: cleanPhone });
+      cust = await prisma.customer.findFirst({ where: { OR: orConditions } });
+    }
+
+    if (!cust) {
+      // Buat customer baru otomatis
+      cust = await prisma.customer.create({
+        data: {
+          id: `cst_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          name: cleanName,
+          phone: cleanPhone,
+          branch: "Telkom",
+          totalVisits: 0,
+          totalSpend: 0,
+        },
+      });
+    }
+
+    // 2. CEGAH KEANGGOTAAN GANDA: Periksa apakah customer sudah memiliki membership aktif
+    const existingActive = await prisma.member.findFirst({
+      where: {
+        OR: [
+          { customerId: cust.id },
+          { name: { equals: cleanName, mode: "insensitive" } },
+          ...(cleanPhone ? [{ phone: cleanPhone }] : []),
+        ],
+        status: "ACTIVE",
+        endDate: { gte: new Date() },
+      },
+    });
+
+    if (existingActive) {
+      const expDateStr = new Date(existingActive.endDate).toLocaleDateString("id-ID", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      });
+      throw new Error(
+        `Customer "${cust.name}" sudah memiliki membership aktif (${existingActive.memberCode}, Paket ${existingActive.packageName}, Berlaku s/d ${expDateStr}). Tidak dapat menambahkan keanggotaan ganda.`
+      );
+    }
+
+    // 3. Generate Member Code Unik
+    let memberCode = `AD-MBR-${Math.floor(100 + Math.random() * 900)}`;
+    let collision = await prisma.member.findUnique({ where: { memberCode } });
+    let attempts = 0;
+    while (collision && attempts < 10) {
+      memberCode = `AD-MBR-${Math.floor(100 + Math.random() * 900)}`;
+      collision = await prisma.member.findUnique({ where: { memberCode } });
+      attempts++;
+    }
+
+    // 4. Simpan ke database Supabase secara permanen
+    const newMember = await prisma.member.create({
+      data: {
+        id: `mbr_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        customerId: cust.id,
+        memberCode,
+        name: cleanName,
+        phone: cleanPhone,
+        packageName: data.packageName,
+        startDate,
+        endDate,
+        status: "ACTIVE",
+        totalVisits: cust.totalVisits || 0,
+        totalSpend: cust.totalSpend || 0,
+      },
+      include: {
+        customer: true,
+      },
+    });
+
+    await recordActivity({
+      action: "TAMBAH_MEMBER",
+      description: `Pendaftaran Member Baru ${memberCode} - ${cleanName} (${data.packageName}, masa aktif ${durationDays} hari)`,
+      branch: cust.branch || "Telkom",
+      actor: "Admin",
+    });
+
+    return newMember;
+  }
+
+  // Memory fallback
+  await initMemoryDBIfNeeded();
+  syncFromLocalDB();
+
+  if (!memoryDB.customers) memoryDB.customers = [];
+  if (!memoryDB.members) memoryDB.members = [];
+
+  let cust = data.customerId ? memoryDB.customers.find((c: any) => c.id === data.customerId) : null;
+  if (!cust) {
+    cust = memoryDB.customers.find((c: any) => 
+      c.name?.toLowerCase() === cleanName.toLowerCase() || (cleanPhone && c.phone === cleanPhone)
+    );
+  }
+  if (!cust) {
+    cust = {
+      id: `cst_${Date.now()}`,
+      name: cleanName,
+      phone: cleanPhone,
+      branch: "Telkom",
+      totalVisits: 0,
+      totalSpend: 0,
+      createdAt: new Date(),
+    };
+    memoryDB.customers.unshift(cust);
+  }
+
+  const existingActive = memoryDB.members.find((m: any) => 
+    (m.customerId === cust.id || m.name?.toLowerCase() === cleanName.toLowerCase()) &&
+    m.status === "ACTIVE" &&
+    new Date(m.endDate) >= new Date()
   );
+  if (existingActive) {
+    throw new Error(`Customer "${cust.name}" sudah memiliki membership aktif (${existingActive.memberCode}).`);
+  }
+
+  const memberCode = `AD-MBR-${Math.floor(100 + Math.random() * 900)}`;
+  const newM = {
+    id: `mbr_${Date.now()}`,
+    customerId: cust.id,
+    memberCode,
+    name: cleanName,
+    phone: cleanPhone,
+    packageName: data.packageName,
+    startDate,
+    endDate,
+    status: "ACTIVE",
+    totalVisits: cust.totalVisits || 0,
+    totalSpend: cust.totalSpend || 0,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    customer: cust,
+  };
+  memoryDB.members.unshift(newM);
+  saveLocalDB();
+  return newM;
+}
+
+export async function updateMember(id: string, data: {
+  name?: string;
+  phone?: string | null;
+  packageName?: string;
+  status?: "ACTIVE" | "EXPIRED" | "INACTIVE";
+  endDate?: Date | string;
+}) {
+  const dbUrl = process.env.DATABASE_URL || "";
+  const hasPersistentDb = !!dbUrl && !dbUrl.includes("[YOUR-") && !dbUrl.includes("placeholder");
+
+  const updateData: any = {};
+  if (data.name !== undefined) updateData.name = data.name.trim();
+  if (data.phone !== undefined) updateData.phone = data.phone?.trim() || null;
+  if (data.packageName !== undefined) updateData.packageName = data.packageName;
+  if (data.status !== undefined) updateData.status = data.status;
+  if (data.endDate !== undefined) updateData.endDate = new Date(data.endDate);
+
+  if (hasPersistentDb) {
+    if (!(await isDatabaseConnected())) throw new Error("Database Supabase tidak terhubung.");
+    const updated = await prisma.member.update({
+      where: { id },
+      data: updateData,
+      include: { customer: true },
+    });
+
+    if (updated.customerId && (data.name || data.phone !== undefined)) {
+      await prisma.customer.update({
+        where: { id: updated.customerId },
+        data: {
+          ...(data.name ? { name: data.name.trim() } : {}),
+          ...(data.phone !== undefined ? { phone: data.phone?.trim() || null } : {}),
+        },
+      }).catch(() => {});
+    }
+
+    return updated;
+  }
+
+  await initMemoryDBIfNeeded();
+  syncFromLocalDB();
+  const idx = (memoryDB.members || []).findIndex((m: any) => m.id === id);
+  if (idx === -1) throw new Error("Member tidak ditemukan");
+  memoryDB.members[idx] = { ...memoryDB.members[idx], ...updateData };
+  saveLocalDB();
+  return memoryDB.members[idx];
 }
 
 export async function extendMember(id: string, additionalDays: number) {
-  return safeDb(
-    async () => {
-      const existing = await prisma.member.findUniqueOrThrow({ where: { id } });
-      const currentEnd = new Date(existing.endDate) > new Date() ? new Date(existing.endDate) : new Date();
-      const newEnd = new Date(currentEnd.getTime() + additionalDays * 24 * 60 * 60 * 1000);
-      return await prisma.member.update({
-        where: { id },
-        data: { endDate: newEnd, status: "ACTIVE" },
-      });
-    },
-    () => {
-      const m = memoryDB.members.find((item) => item.id === id);
-      if (!m) throw new Error("Member tidak ditemukan");
-      const currentEnd = new Date(m.endDate) > new Date() ? new Date(m.endDate) : new Date();
-      m.endDate = new Date(currentEnd.getTime() + additionalDays * 24 * 60 * 60 * 1000);
-      m.status = "ACTIVE";
-      return m;
-    },
-    true
-  );
+  const dbUrl = process.env.DATABASE_URL || "";
+  const hasPersistentDb = !!dbUrl && !dbUrl.includes("[YOUR-") && !dbUrl.includes("placeholder");
+
+  if (hasPersistentDb) {
+    if (!(await isDatabaseConnected())) throw new Error("Database Supabase tidak terhubung.");
+    const existing = await prisma.member.findUniqueOrThrow({ where: { id } });
+    const currentEnd = new Date(existing.endDate) > new Date() ? new Date(existing.endDate) : new Date();
+    const newEnd = new Date(currentEnd.getTime() + additionalDays * 24 * 60 * 60 * 1000);
+    const updated = await prisma.member.update({
+      where: { id },
+      data: { endDate: newEnd, status: "ACTIVE" },
+      include: { customer: true },
+    });
+    await recordActivity({
+      action: "PERPANJANG_MEMBER",
+      description: `Perpanjangan Member ${existing.memberCode} (${existing.name}) +${additionalDays} hari s/d ${newEnd.toLocaleDateString("id-ID")}`,
+      branch: "Telkom",
+      actor: "Admin",
+    });
+    return updated;
+  }
+
+  await initMemoryDBIfNeeded();
+  syncFromLocalDB();
+  const m = (memoryDB.members || []).find((item: any) => item.id === id);
+  if (!m) throw new Error("Member tidak ditemukan");
+  const currentEnd = new Date(m.endDate) > new Date() ? new Date(m.endDate) : new Date();
+  m.endDate = new Date(currentEnd.getTime() + additionalDays * 24 * 60 * 60 * 1000);
+  m.status = "ACTIVE";
+  saveLocalDB();
+  return m;
 }
 
 export async function deleteMember(id: string) {
-  return safeDb(
-    async () => {
-      await prisma.member.delete({ where: { id } });
-      return { success: true };
-    },
-    () => {
-      const idx = memoryDB.members.findIndex((m) => m.id === id);
-      if (idx === -1) throw new Error("Member tidak ditemukan");
-      memoryDB.members.splice(idx, 1);
-      return { success: true };
-    },
-    true
-  );
+  const dbUrl = process.env.DATABASE_URL || "";
+  const hasPersistentDb = !!dbUrl && !dbUrl.includes("[YOUR-") && !dbUrl.includes("placeholder");
+
+  if (hasPersistentDb) {
+    if (!(await isDatabaseConnected())) throw new Error("Database Supabase tidak terhubung.");
+    const existing = await prisma.member.findUnique({ where: { id } });
+    await prisma.member.delete({ where: { id } });
+    if (existing) {
+      await recordActivity({
+        action: "HAPUS_MEMBER",
+        description: `Hapus Member ${existing.memberCode} (${existing.name})`,
+        branch: "Telkom",
+        actor: "Admin",
+      });
+    }
+    return { success: true };
+  }
+
+  await initMemoryDBIfNeeded();
+  syncFromLocalDB();
+  const idx = (memoryDB.members || []).findIndex((m: any) => m.id === id);
+  if (idx === -1) throw new Error("Member tidak ditemukan");
+  memoryDB.members.splice(idx, 1);
+  saveLocalDB();
+  return { success: true };
 }
 
 // BOOKINGS
@@ -2753,6 +3044,74 @@ export async function processCheckout(payload: CheckoutPayload & { branch?: stri
 
   const customerId = cust?.id || `cst_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
   const now = new Date();
+
+  // 🔑 DISKON OTOMATIS MEMBER 10% KHUSUS LAYANAN POTONG RAMBUT (HAIRCUT)
+  // Verifikasi status keanggotaan aktif di Supabase
+  let activeMember: any = null;
+  if (cust?.id) {
+    activeMember = await prisma.member.findFirst({
+      where: {
+        customerId: cust.id,
+        status: "ACTIVE",
+        endDate: { gte: now },
+      },
+    });
+  }
+  if (!activeMember && payload.customerName) {
+    const custName = payload.customerName.trim();
+    activeMember = await prisma.member.findFirst({
+      where: {
+        name: { equals: custName, mode: "insensitive" },
+        status: "ACTIVE",
+        endDate: { gte: now },
+      },
+    });
+  }
+
+  // Ambil data layanan dari DB untuk verifikasi kategori (HAIRCUT)
+  const serviceIds = payload.items
+    .filter((it) => it.itemType === "SERVICE" && it.serviceId)
+    .map((it) => it.serviceId as string);
+  const dbServices = serviceIds.length > 0
+    ? await prisma.service.findMany({ where: { id: { in: serviceIds } } }).catch(() => [])
+    : [];
+  const serviceMap = new Map(dbServices.map((s) => [s.id, s]));
+
+  // Hitung subtotal KHUSUS layanan potong rambut (HAIRCUT)
+  // Produk & layanan non-haircut TIDAK mendapatkan diskon
+  let qualifyingHaircutSubtotal = 0;
+  for (const it of payload.items) {
+    if (it.itemType !== "SERVICE") continue;
+    const srv = it.serviceId ? serviceMap.get(it.serviceId) : null;
+    const cat = srv?.category || (it as any).category;
+    const nameLower = (it.name || "").toLowerCase();
+    if (cat === "HAIRCUT" || nameLower.includes("haircut") || nameLower.includes("potong")) {
+      qualifyingHaircutSubtotal += Number(it.price) * Number(it.quantity);
+    }
+  }
+
+  // Diskon Member 10% dihitung hanya dari subtotal potong rambut
+  const memberDiscount = activeMember ? Math.round(qualifyingHaircutSubtotal * 0.10) : 0;
+  const bookingDpDiscount = (payload.bookingId || (payload.dpAmount && payload.dpAmount > 0)) ? 20000 : 0;
+
+  // Gabungkan diskon dengan aman tanpa duplikasi
+  let calculatedDiscount = memberDiscount + bookingDpDiscount;
+  if (payload.discount > calculatedDiscount) {
+    // Kasir memasukkan diskon manual tambahan
+    calculatedDiscount = Math.min(payload.subtotal, payload.discount);
+  } else if (!activeMember && !payload.bookingId && !payload.dpAmount) {
+    calculatedDiscount = Math.max(0, Math.min(payload.subtotal, payload.discount || 0));
+  }
+
+  const calculatedGrandTotal = Math.max(0, payload.subtotal - calculatedDiscount);
+  payload.discount = calculatedDiscount;
+  payload.grandTotal = calculatedGrandTotal;
+
+  if (activeMember && memberDiscount > 0) {
+    const memberTag = `[Member ${activeMember.memberCode}: Diskon 10% Haircut Rp ${memberDiscount.toLocaleString("id-ID")}]`;
+    payload.notes = payload.notes ? `${payload.notes} | ${memberTag}` : memberTag;
+  }
+
   const totalVisits = (cust?.totalVisits || 0) + 1;
   const totalSpend = (cust?.totalSpend || 0) + payload.grandTotal;
 
@@ -2910,6 +3269,17 @@ export async function processCheckout(payload: CheckoutPayload & { branch?: stri
     const customer = await writeCustomer(prisma);
     await deductStock(prisma);
     result = await createTx(prisma, customer);
+  }
+
+  // Perbarui total kunjungan & pengeluaran Member di Supabase
+  if (activeMember) {
+    await prisma.member.update({
+      where: { id: activeMember.id },
+      data: {
+        totalVisits: { increment: 1 },
+        totalSpend: { increment: payload.grandTotal },
+      },
+    }).catch(() => {});
   }
 
   // 🔴 REMOVED: await hydrateFromSupabase() — ephemeral in Vercel, causes slow 10-table reload

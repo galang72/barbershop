@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getMembers, createMember, extendMember, deleteMember } from "@/lib/db";
+import { getMembers, createMember, extendMember, deleteMember, updateMember, getMemberDetail } from "@/lib/db";
 import { invalidateCache } from "@/lib/cache";
 
 export const dynamic = "force-dynamic";
@@ -8,9 +8,19 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const query = searchParams.get("q") || undefined;
+    const id = searchParams.get("id");
+
+    if (id) {
+      const member = await getMemberDetail(id);
+      if (!member) {
+        return NextResponse.json({ error: "Member tidak ditemukan" }, { status: 404 });
+      }
+      return NextResponse.json(member);
+    }
+
     const data = await getMembers(query);
     return NextResponse.json(data, {
-      headers: { "Cache-Control": "public, s-maxage=15, stale-while-revalidate=30" },
+      headers: { "Cache-Control": "public, s-maxage=5, stale-while-revalidate=15" },
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
@@ -24,35 +34,44 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Nama, paket, dan durasi member wajib diisi" }, { status: 400 });
     }
 
-    const memberCode = `AD-MBR-${String(Math.floor(100 + Math.random() * 900))}`;
-    const endDate = new Date(Date.now() + Number(body.durationDays) * 24 * 60 * 60 * 1000);
-
     const created = await createMember({
-      customerId: body.customerId || null,
-      memberCode,
       name: body.name.trim(),
       phone: body.phone?.trim() || null,
       packageName: body.packageName,
-      endDate,
+      durationDays: Number(body.durationDays),
+      customerId: body.customerId || null,
     });
 
     invalidateCache("members:");
-    return NextResponse.json(created);
+    return NextResponse.json({ success: true, member: created });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    const isDuplicate = err.message?.includes("sudah memiliki membership");
+    return NextResponse.json({ error: err.message }, { status: isDuplicate ? 409 : 500 });
   }
 }
 
 export async function PUT(req: NextRequest) {
   try {
     const body = await req.json();
-    const { id, additionalDays } = body;
-    if (!id || !additionalDays) {
-      return NextResponse.json({ error: "ID dan tambahan hari wajib diisi" }, { status: 400 });
+    if (body.additionalDays !== undefined) {
+      // Perpanjangan masa aktif
+      const { id, additionalDays } = body;
+      if (!id || !additionalDays) {
+        return NextResponse.json({ error: "ID dan tambahan hari wajib diisi" }, { status: 400 });
+      }
+      const updated = await extendMember(id, Number(additionalDays));
+      invalidateCache("members:");
+      return NextResponse.json({ success: true, member: updated });
     }
-    const updated = await extendMember(id, Number(additionalDays));
+
+    // Edit profil member
+    const { id, ...data } = body;
+    if (!id) {
+      return NextResponse.json({ error: "ID member wajib diisi" }, { status: 400 });
+    }
+    const updated = await updateMember(id, data);
     invalidateCache("members:");
-    return NextResponse.json(updated);
+    return NextResponse.json({ success: true, member: updated });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
