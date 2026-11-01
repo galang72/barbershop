@@ -3212,6 +3212,7 @@ export interface CheckoutPayload {
   }>;
   subtotal: number;
   discount: number;
+  manualDiscount?: number;
   grandTotal: number;
   paymentMethod: "CASH" | "QRIS" | "TRANSFER" | "DEBIT" | "KREDIT" | "E_WALLET";
   amountPaid: number;
@@ -3321,14 +3322,16 @@ export async function processCheckout(payload: CheckoutPayload & { branch?: stri
   // 🔑 DISKON & DP CALCULATION
   // Diskon riil = Diskon Member (10% potong rambut) + Diskon manual
   let manualDiscount = 0;
-  if (payload.discount && payload.discount > (memberDiscount + bookingDpDiscount)) {
-    manualDiscount = payload.discount - (memberDiscount + bookingDpDiscount);
-  } else if (!activeMember && !isDpPaid) {
-    manualDiscount = Math.max(0, Math.min(payload.subtotal, payload.discount || 0));
+  if (typeof (payload as any).manualDiscount === "number") {
+    manualDiscount = Math.max(0, (payload as any).manualDiscount);
+  } else if (payload.discount && payload.discount > memberDiscount) {
+    manualDiscount = Math.max(0, payload.discount - memberDiscount);
+  } else if (payload.discount && !activeMember) {
+    manualDiscount = Math.max(0, payload.discount);
   }
   const realDiscount = Math.min(payload.subtotal, memberDiscount + manualDiscount);
 
-  // Nilai Omzet Transaksi Bersih setelah diskon
+  // Nilai Omzet Transaksi Bersih setelah diskon (DP bukan diskon, tidak memotong omzet)
   const calculatedGrandTotal = Math.max(0, payload.subtotal - realDiscount);
 
   // Sisa yang ditagihkan di kasir (setelah dipotong uang muka DP Rp 20.000 jika ada)
@@ -3686,7 +3689,7 @@ async function processCheckoutMemoryFallback(payload: CheckoutPayload & { branch
       id: `csh_${Date.now()}`,
       type: "CASH_IN",
       category: "Penjualan Kasir",
-      amount: payload.grandTotal,
+      amount: payload.amountPaid ?? payload.grandTotal,
       description: `Pembayaran Cash Kasir ${invoiceNumber} (${payload.customerName})`,
       source: "POS_SALE",
       transactionId: txId,

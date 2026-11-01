@@ -362,9 +362,9 @@ export default function KasirPage() {
   // Diskon otomatis member 10% khusus potong rambut
   const memberDiscountAmount = selectedMember ? Math.round(qualifyingHaircutSubtotal * 0.10) : 0;
 
-  // Potongan DP Booking Rp 20.000 HANYA JIKA DP sudah berstatus SUDAH_DIBAYAR
+  // Potongan DP Booking Rp 20.000 HANYA JIKA DP sudah berstatus SUDAH_DIBAYAR atau LUNAS
   const isBookingDpPaid = selectedBooking
-    ? (selectedBooking.dpStatus === "SUDAH_DIBAYAR" || (selectedBooking.dpPaid && selectedBooking.dpPaid > 0))
+    ? (selectedBooking.dpStatus === "SUDAH_DIBAYAR" || selectedBooking.dpStatus === "LUNAS" || (selectedBooking.dpPaid && selectedBooking.dpPaid > 0) || (selectedBooking.dpAmount && selectedBooking.dpAmount > 0))
     : false;
   const bookingDpAmount = isBookingDpPaid ? 20000 : 0;
 
@@ -374,16 +374,23 @@ export default function KasirPage() {
       ? Math.round((subtotal * Math.min(100, Math.max(0, discountValue))) / 100)
       : Math.min(subtotal, Math.max(0, discountValue));
 
-  const discountAmount = Math.min(subtotal, memberDiscountAmount + bookingDpAmount + manualDiscountAmount);
+  // 🔑 DISKON HANYA DISKON MEMBER + DISKON MANUAL (DP BUKAN DISKON!)
+  const discountAmount = Math.min(subtotal, memberDiscountAmount + manualDiscountAmount);
+  
+  // 🔑 GRAND TOTAL ADALAH OMZET RIIL SETELAH DISKON
   const grandTotal = Math.max(0, subtotal - discountAmount);
-  const changeAmount = paymentMethod === "CASH" ? Math.max(0, amountPaid - grandTotal) : 0;
 
-  // Set default amount paid when grandTotal changes
+  // 🔑 SISA TAGIHAN PELUNASAN KASIR (SETELAH DIPOTONG DP JIKA ADA)
+  const remainingCashierDue = Math.max(0, grandTotal - bookingDpAmount);
+
+  const changeAmount = paymentMethod === "CASH" ? Math.max(0, amountPaid - remainingCashierDue) : 0;
+
+  // Set default amount paid when remainingCashierDue changes
   useEffect(() => {
     if (paymentMethod === "CASH") {
-      setAmountPaid(grandTotal);
+      setAmountPaid(remainingCashierDue);
     }
-  }, [grandTotal, paymentMethod]);
+  }, [remainingCashierDue, paymentMethod]);
 
   // Handle Customer Selection
   const handleSelectExistingCustomer = (cust: any) => {
@@ -462,8 +469,8 @@ export default function KasirPage() {
       return;
     }
 
-    if (paymentMethod === "CASH" && amountPaid < grandTotal) {
-      alert(`Uang diterima (${formatRupiah(amountPaid)}) kurang dari total bayar (${formatRupiah(grandTotal)})!`);
+    if (paymentMethod === "CASH" && amountPaid < remainingCashierDue) {
+      alert(`Uang diterima (${formatRupiah(amountPaid)}) kurang dari sisa tagihan (${formatRupiah(remainingCashierDue)})!`);
       return;
     }
 
@@ -478,13 +485,14 @@ export default function KasirPage() {
         items: cart,
         subtotal,
         discount: discountAmount,
+        manualDiscount: manualDiscountAmount,
         grandTotal,
         paymentMethod,
-        amountPaid: paymentMethod === "CASH" ? amountPaid : grandTotal,
+        amountPaid: paymentMethod === "CASH" ? amountPaid : remainingCashierDue,
         changeAmount,
         notes,
         bookingId: selectedBooking?.id || null,
-        dpAmount: selectedBooking ? 20000 : 0,
+        dpAmount: bookingDpAmount,
       };
 
       const res = await fetch("/api/kasir/checkout", {
@@ -1145,6 +1153,18 @@ export default function KasirPage() {
                 </div>
               )}
 
+              {manualDiscountAmount > 0 && (
+                <div className="flex justify-between text-rose-600 font-semibold">
+                  <span>Diskon Tambahan (Manual):</span>
+                  <span>-{formatRupiah(manualDiscountAmount)}</span>
+                </div>
+              )}
+
+              <div className="flex justify-between text-slate-800 font-bold pt-1 border-t border-slate-100">
+                <span>Total Omzet Transaksi:</span>
+                <span className="text-slate-900">{formatRupiah(grandTotal)}</span>
+              </div>
+
               {bookingDpAmount > 0 && (
                 <div className="flex justify-between text-emerald-600 font-semibold">
                   <span>Potongan DP Booking:</span>
@@ -1152,20 +1172,13 @@ export default function KasirPage() {
                 </div>
               )}
 
-              {manualDiscountAmount > 0 && (
-                <div className="flex justify-between text-rose-600 font-semibold">
-                  <span>Diskon Tambahan:</span>
-                  <span>-{formatRupiah(manualDiscountAmount)}</span>
-                </div>
-              )}
-
-              {/* GRAND TOTAL */}
+              {/* SISA PELUNASAN KASIR */}
               <div className="flex justify-between items-center pt-2 border-t border-slate-200">
                 <span className="font-extrabold text-xs text-slate-800 uppercase tracking-wider">
-                  TOTAL BAYAR:
+                  SISA PELUNASAN KASIR:
                 </span>
                 <span className="font-black text-xl text-blue-700">
-                  {formatRupiah(grandTotal)}
+                  {formatRupiah(remainingCashierDue)}
                 </span>
               </div>
             </div>
