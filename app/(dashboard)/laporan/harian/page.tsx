@@ -129,9 +129,11 @@ export default function LaporanHarianPage() {
         <Card className="card-stat p-4 bg-white border-slate-200/80 shadow-sm">
           <div className="text-xs text-slate-500 uppercase font-semibold">Penjualan Layanan</div>
           <div className="text-2xl font-black text-slate-900 mt-1">
-            {formatRupiah(report?.serviceSales || 0)}
+            {formatRupiah(report?.netServiceSales !== undefined ? report?.netServiceSales : (report?.serviceSales || 0))}
           </div>
-          <div className="text-[11px] text-slate-400 mt-1">Haircut & Treatment</div>
+          <div className="text-[11px] text-slate-400 mt-1">
+            {Number(report?.totalDiscount || 0) > 0 ? `Subtotal ${formatRupiah(report?.serviceSales || 0)} - Diskon ${formatRupiah(report?.totalDiscount || 0)}` : "Haircut & Treatment"}
+          </div>
         </Card>
 
         <Card className="card-stat p-4 bg-white border-slate-200/80 shadow-sm">

@@ -154,9 +154,11 @@ export default function LaporanBulananPage() {
         <div className="card-stat rounded-xl p-3.5 bg-white border border-slate-200/80 shadow-sm">
           <div className="text-[11px] text-slate-500 font-semibold">Omzet Layanan</div>
           <div className="text-xl font-black text-slate-900 mt-1">
-            {formatRupiah(data?.serviceSales || 0)}
+            {formatRupiah(data?.netServiceSales !== undefined ? data?.netServiceSales : (data?.serviceSales || 0))}
           </div>
-          <div className="text-[10px] text-slate-400 mt-0.5">Pangkas & Treatment</div>
+          <div className="text-[10px] text-slate-400 mt-0.5">
+            {Number(data?.totalDiscount || 0) > 0 ? `Subtotal ${formatRupiah(data?.serviceSales || 0)} - Diskon ${formatRupiah(data?.totalDiscount || 0)}` : "Pangkas & Treatment"}
+          </div>
         </div>
 
         <div className="card-stat rounded-xl p-3.5 bg-white border border-slate-200/80 shadow-sm">
@@ -245,7 +247,9 @@ export default function LaporanBulananPage() {
                 <td className="py-2.5 px-4 text-center text-slate-600">{data?.totalCustomers || 0} layanan</td>
                 <td className="py-2.5 px-4 text-right font-bold text-slate-900">{formatRupiah(data?.serviceSales || 0)}</td>
                 <td className="py-2.5 px-4 text-right text-slate-600">
-                  {data?.totalOmzet > 0 ? ((data.serviceSales / data.totalOmzet) * 100).toFixed(1) : 0}%
+                  {((data?.serviceSales || 0) + (data?.productSales || 0)) > 0
+                    ? (((data?.serviceSales || 0) / ((data?.serviceSales || 0) + (data?.productSales || 0))) * 100).toFixed(1)
+                    : 0}%
                 </td>
               </tr>
               <tr>
@@ -255,9 +259,25 @@ export default function LaporanBulananPage() {
                 </td>
                 <td className="py-2.5 px-4 text-right font-bold text-slate-900">{formatRupiah(data?.productSales || 0)}</td>
                 <td className="py-2.5 px-4 text-right text-slate-600">
-                  {data?.totalOmzet > 0 ? ((data.productSales / data.totalOmzet) * 100).toFixed(1) : 0}%
+                  {((data?.serviceSales || 0) + (data?.productSales || 0)) > 0
+                    ? (((data?.productSales || 0) / ((data?.serviceSales || 0) + (data?.productSales || 0))) * 100).toFixed(1)
+                    : 0}%
                 </td>
               </tr>
+              {Number(data?.totalDiscount || 0) > 0 && (
+                <tr className="bg-rose-50/40">
+                  <td className="py-2.5 px-4 text-rose-700 italic pl-8">
+                    Dikurangi: Potongan Diskon Penjualan & Member
+                  </td>
+                  <td className="py-2.5 px-4 text-center text-slate-400">-</td>
+                  <td className="py-2.5 px-4 text-right text-rose-700 font-semibold">
+                    -{formatRupiah(data?.totalDiscount || 0)}
+                  </td>
+                  <td className="py-2.5 px-4 text-right text-rose-700 font-medium">
+                    -{data?.totalOmzet > 0 ? (((data.totalDiscount || 0) / data.totalOmzet) * 100).toFixed(1) : 0}%
+                  </td>
+                </tr>
+              )}
               <tr className="bg-blue-50/60 font-black text-blue-900 border-t border-b border-blue-200">
                 <td className="py-2.5 px-4 uppercase">TOTAL PENDAPATAN KOTOR (OMZET BULANAN)</td>
                 <td className="py-2.5 px-4 text-center">{data?.totalTransactions || 0} transaksi</td>

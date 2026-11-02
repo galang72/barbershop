@@ -4655,11 +4655,19 @@ export async function getDashboardData(
         const list: { amount: number; branch: string }[] = [];
         for (const e of exps) {
           seenExp.add(e.id);
-          seenExp.add(`csh_${e.id}`);
+          const cleanId = e.id.replace(/^exp_/, "");
+          seenExp.add(cleanId);
+          seenExp.add(`csh_${cleanId}`);
           list.push({ amount: Number(e.amount || 0), branch: e.branch || "Telkom" });
         }
         for (const c of cashOuts) {
-          if (!seenExp.has(c.id) && !c.source?.includes("EXPENSE")) {
+          const cleanCId = c.id.replace(/^csh_/, "");
+          const isDup =
+            seenExp.has(c.id) ||
+            seenExp.has(cleanCId) ||
+            seenExp.has(`exp_${c.id}`) ||
+            c.source?.includes("EXPENSE");
+          if (!isDup) {
             list.push({ amount: Number(c.amount || 0), branch: c.branch || "Telkom" });
           }
         }
@@ -5126,16 +5134,18 @@ export async function getDailyReport(dateStr?: string, branch?: string) {
 
     ]);
 
-    let serviceSales = 0; let productSales = 0; let totalOmzet = 0;
+    let serviceSales = 0; let productSales = 0; let totalOmzet = 0; let totalDiscount = 0;
     let cashIn = 0; let physicalCashIn = 0; let qrisIncome = 0; let cashOut = 0;
 
     for (const tx of txs) {
       totalOmzet += (tx as any).grandTotal || 0;
+      totalDiscount += Number((tx as any).discount || 0);
       for (const item of (tx as any).items || []) {
         if (item.itemType === "SERVICE") serviceSales += item.subtotal || 0;
         else if (item.itemType === "PRODUCT") productSales += item.subtotal || 0;
       }
     }
+    const netServiceSales = Math.max(0, serviceSales - totalDiscount);
     const seenExp = new Set<string>();
     const expensesList: any[] = [];
     for (const exp of rawExpenses) {
@@ -5204,7 +5214,7 @@ export async function getDailyReport(dateStr?: string, branch?: string) {
     return {
       date: format(targetDate, "yyyy-MM-dd"), branch: branch || "All",
       totalCustomers: txs.length, totalTransactions: txs.length,
-      totalOmzet, serviceSales, productSales,
+      totalOmzet, totalDiscount, serviceSales, netServiceSales, productSales,
       pomadeSold: pomadeReport.totalSold, pomadeOmzet: pomadeReport.totalOmzet,
       tonicPowderSold: tonicPowderReport.totalSold, tonicPowderOmzet: tonicPowderReport.totalOmzet,
       cashIn, physicalCashIn, qrisIncome, cashOut,
@@ -5228,15 +5238,17 @@ export async function getDailyReport(dateStr?: string, branch?: string) {
     .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   if (branch && branch !== "All") txs = txs.filter((t: any) => t.branch === branch);
 
-  let serviceSales = 0; let productSales = 0; let totalOmzet = 0;
+  let serviceSales = 0; let productSales = 0; let totalOmzet = 0; let totalDiscount = 0;
   for (const tx of txs) {
     totalOmzet += tx.grandTotal || 0;
+    totalDiscount += Number(tx.discount || 0);
     const items = (memoryDB.transactionItems || []).filter((i: any) => i.transactionId === tx.id);
     for (const item of items) {
       if (item.itemType === "SERVICE") serviceSales += item.subtotal || 0;
       else if (item.itemType === "PRODUCT") productSales += item.subtotal || 0;
     }
   }
+  const netServiceSales = Math.max(0, serviceSales - totalDiscount);
 
   let cashEntries = (memoryDB.cashTransactions || []).filter((c: any) => { const d = new Date(c.createdAt); return d >= start && d <= end; });
   if (branch && branch !== "All") cashEntries = cashEntries.filter((c: any) => !c.branch || c.branch === branch || c.branch === "All");
@@ -5319,7 +5331,7 @@ export async function getDailyReport(dateStr?: string, branch?: string) {
   return {
     date: format(targetDate, "yyyy-MM-dd"), branch: branch || "All",
     totalCustomers: txs.length, totalTransactions: txs.length,
-    totalOmzet, serviceSales, productSales,
+    totalOmzet, totalDiscount, serviceSales, netServiceSales, productSales,
     pomadeSold: pomadeReport.totalSold, pomadeOmzet: pomadeReport.totalOmzet,
     tonicPowderSold: tonicPowderReport.totalSold, tonicPowderOmzet: tonicPowderReport.totalOmzet,
     cashIn, physicalCashIn, qrisIncome, cashOut,
@@ -5427,7 +5439,7 @@ export async function getAnnualReport(year: number = new Date().getFullYear(), b
           }
         }
       }
-      const grossProfit = serviceSales + (productOmzet - productCost);
+      const grossProfit = Math.max(0, omzet - productCost);
       const netProfit = grossProfit - monthExpenses;
       monthsData.push({
         month: monthNames[m],
@@ -5505,7 +5517,7 @@ export async function getAnnualReport(year: number = new Date().getFullYear(), b
         }
       }
     }
-    const grossProfit = serviceSales + (productOmzet - productCost);
+    const grossProfit = Math.max(0, omzet - productCost);
     const netProfit = grossProfit - monthExpenses;
     monthsData.push({
       month: monthNames[m],
@@ -5588,6 +5600,7 @@ export async function getMonthlyReport(yearNum?: number, monthNum?: number, bran
   }
 
   let totalOmzet = 0;
+  let totalDiscount = 0;
   let serviceSales = 0;
   let productSales = 0;
   let productCost = 0;
@@ -5603,6 +5616,7 @@ export async function getMonthlyReport(yearNum?: number, monthNum?: number, bran
 
   for (const tx of txs) {
     totalOmzet += tx.grandTotal || 0;
+    totalDiscount += tx.discount || 0;
 
     // Perhitungan metode pembayaran yang detail (mendukung split payment jika ada payments table)
     if (tx.payments && tx.payments.length > 0) {
@@ -5610,7 +5624,7 @@ export async function getMonthlyReport(yearNum?: number, monthNum?: number, bran
         const pm = (p.paymentMethod || "CASH").toUpperCase();
         if (!paymentMap[pm]) paymentMap[pm] = { count: 0, total: 0 };
         paymentMap[pm].count += 1;
-        paymentMap[pm].total += Number(p.amount || 0);
+        paymentMap[pm].total += Number(p.amountPaid ?? p.amount ?? 0);
       }
     } else {
       const pm = (tx.paymentMethod || "CASH").toUpperCase();
@@ -5695,7 +5709,10 @@ export async function getMonthlyReport(yearNum?: number, monthNum?: number, bran
   }
 
   const totalCashExpenses = expensesList.reduce((sum, e) => sum + (e.amount || 0), 0);
-  const grossProfit = serviceSales + (productSales - productCost);
+  const netServiceSales = Math.max(0, serviceSales - totalDiscount);
+  // Laba Kotor = Total Omzet (setelah dikurangi diskon) - HPP Modal Produk
+  const grossProfit = Math.max(0, totalOmzet - productCost);
+  // Laba Bersih = Laba Kotor - Beban Pengeluaran Kas
   const netOperatingIncome = grossProfit - totalCashExpenses;
 
 
@@ -5723,7 +5740,7 @@ export async function getMonthlyReport(yearNum?: number, monthNum?: number, bran
     year, month: month + 1, monthName: format(startM, "MMMM yyyy"),
     branch: branch || "All",
     totalCustomers: txs.length, totalTransactions: txs.length,
-    totalOmzet, serviceSales, productSales, productCost, grossProfit,
+    totalOmzet, totalDiscount, serviceSales, netServiceSales, productSales, productCost, grossProfit,
     cashExpenses: totalCashExpenses, netOperatingIncome,
     cashIn, physicalCashIn, qrisIncome, cashOut,
     cashEnding: physicalCashIn - cashOut,
