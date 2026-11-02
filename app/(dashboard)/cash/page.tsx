@@ -302,31 +302,43 @@ export default function CashManagementPage() {
       {isOwner && (cashData?.telkomCash !== undefined || cashData?.sutaCash !== undefined) && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <Card className="p-4 border-blue-200 bg-blue-50/40">
-            <div className="text-[10px] font-bold text-blue-700 uppercase tracking-wider flex items-center gap-1 mb-1">
-              📍 Cash Cabang Telkom
+            <div className="text-[10px] font-bold text-blue-700 uppercase tracking-wider flex items-center justify-between mb-1">
+              <span>📍 Laci Kas Fisik Telkom</span>
+              <span className="text-[10px] px-1.5 py-0.2 rounded bg-blue-100 text-blue-800 font-bold">Fisik</span>
             </div>
             <div className="text-2xl font-black text-blue-700">
-              {formatRupiah(cashData?.telkomCash || 0)}
+              {formatRupiah(cashData?.telkomCashInHand ?? cashData?.telkomCash ?? 0)}
             </div>
-            <div className="text-[11px] text-blue-500 mt-1">Saldo sistem cabang Telkom</div>
+            <div className="text-[11px] text-blue-600 mt-1 flex items-center justify-between">
+              <span>QRIS Telkom:</span>
+              <span className="font-bold text-purple-700">{formatRupiah(cashData?.telkomQrisIn || 0)}</span>
+            </div>
           </Card>
           <Card className="p-4 border-indigo-200 bg-indigo-50/40">
-            <div className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider flex items-center gap-1 mb-1">
-              📍 Cash Cabang Suta
+            <div className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider flex items-center justify-between mb-1">
+              <span>📍 Laci Kas Fisik Suta</span>
+              <span className="text-[10px] px-1.5 py-0.2 rounded bg-indigo-100 text-indigo-800 font-bold">Fisik</span>
             </div>
             <div className="text-2xl font-black text-indigo-700">
-              {formatRupiah(cashData?.sutaCash || 0)}
+              {formatRupiah(cashData?.sutaCashInHand ?? cashData?.sutaCash ?? 0)}
             </div>
-            <div className="text-[11px] text-indigo-500 mt-1">Saldo sistem cabang Suta</div>
+            <div className="text-[11px] text-indigo-600 mt-1 flex items-center justify-between">
+              <span>QRIS Suta:</span>
+              <span className="font-bold text-purple-700">{formatRupiah(cashData?.sutaQrisIn || 0)}</span>
+            </div>
           </Card>
           <Card className="p-4 border-emerald-200 bg-emerald-50/40">
-            <div className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider flex items-center gap-1 mb-1">
-              💰 Total Cash Gabungan
+            <div className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider flex items-center justify-between mb-1">
+              <span>💰 Total Kas Fisik Gabungan</span>
+              <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 font-bold">Semua</span>
             </div>
             <div className="text-2xl font-black text-emerald-700">
-              {formatRupiah((cashData?.telkomCash || 0) + (cashData?.sutaCash || 0))}
+              {formatRupiah(cashData?.totalCashInHand ?? ((cashData?.telkomCashInHand || 0) + (cashData?.sutaCashInHand || 0)))}
             </div>
-            <div className="text-[11px] text-emerald-500 mt-1">Telkom + Suta</div>
+            <div className="text-[11px] text-emerald-700 mt-1 flex items-center justify-between">
+              <span>Total QRIS:</span>
+              <span className="font-bold text-purple-700">{formatRupiah(cashData?.totalQrisIncome || 0)}</span>
+            </div>
           </Card>
         </div>
       )}

@@ -187,34 +187,59 @@ export default function LaporanHarianPage() {
 
         {/* Kas Masuk & Kas Keluar */}
         <Card className="card-stat p-5 border-slate-200/80 shadow-sm bg-white">
-          <CardTitle className="text-sm font-bold uppercase tracking-wider text-slate-900 mb-4">
-            Ringkasan Arus Kas Laci
+          <CardTitle className="text-sm font-bold uppercase tracking-wider text-slate-900 mb-4 flex items-center justify-between">
+            <span>Ringkasan Arus Kas & Penerimaan</span>
+            <span className="text-[10px] px-2 py-0.5 rounded bg-blue-50 text-blue-700 font-bold border border-blue-200">
+              Fisik vs Non-Tunai
+            </span>
           </CardTitle>
-          <div className="space-y-3">
-            <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-between">
+          <div className="space-y-2.5">
+            <div className="p-3 rounded-xl bg-emerald-50/70 border border-emerald-200 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <ArrowDownLeft className="w-4 h-4 text-emerald-600" />
-                <span className="text-xs text-slate-700 font-semibold">Total Kas Masuk (Cash In)</span>
+                <div>
+                  <span className="text-xs text-slate-800 font-bold block">Kas Tunai Masuk (Laci Fisik)</span>
+                  <span className="text-[10px] text-emerald-700">Uang tunai cash diterima</span>
+                </div>
               </div>
               <div className="font-black text-emerald-700 text-sm">
-                +{formatRupiah(report?.cashIn || 0)}
+                +{formatRupiah(report?.physicalCashIn || 0)}
               </div>
             </div>
 
-            <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 flex items-center justify-between">
+            <div className="p-3 rounded-xl bg-purple-50/70 border border-purple-200 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-xs px-1.5 py-0.5 bg-purple-200 text-purple-800 rounded font-bold">QR</span>
+                <div>
+                  <span className="text-xs text-slate-800 font-bold block">Penerimaan QRIS & Digital</span>
+                  <span className="text-[10px] text-purple-700">Masuk rekening toko</span>
+                </div>
+              </div>
+              <div className="font-black text-purple-700 text-sm">
+                +{formatRupiah(report?.qrisIncome || 0)}
+              </div>
+            </div>
+
+            <div className="p-3 rounded-xl bg-rose-50/70 border border-rose-200 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <ArrowUpRight className="w-4 h-4 text-rose-600" />
-                <span className="text-xs text-slate-700 font-semibold">Total Kas Keluar (Cash Out)</span>
+                <div>
+                  <span className="text-xs text-slate-800 font-bold block">Kas Keluar (Pengeluaran)</span>
+                  <span className="text-[10px] text-rose-700">Beban operasional harian</span>
+                </div>
               </div>
               <div className="font-black text-rose-700 text-sm">
                 -{formatRupiah(report?.cashOut || 0)}
               </div>
             </div>
 
-            <div className="p-3.5 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-between">
-              <span className="text-xs text-blue-900 font-bold uppercase">Kas Bersih Hari Ini</span>
+            <div className="p-3 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-between">
+              <div>
+                <span className="text-xs text-blue-950 font-black uppercase block">Net Kas Fisik Hari Ini</span>
+                <span className="text-[10px] text-blue-700">Tunai Masuk - Pengeluaran</span>
+              </div>
               <div className="font-black text-blue-700 text-base">
-                {formatRupiah(report?.cashEnding || 0)}
+                {formatRupiah(report?.physicalCashEnding ?? ((report?.physicalCashIn || 0) - (report?.cashOut || 0)))}
               </div>
             </div>
           </div>

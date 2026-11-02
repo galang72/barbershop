@@ -184,11 +184,11 @@ export default function LaporanBulananPage() {
         </div>
 
         <div className="card-stat rounded-xl p-3.5 bg-white border border-slate-200/80 shadow-sm">
-          <div className="text-[11px] text-slate-500 font-semibold">Saldo Kas Laci</div>
+          <div className="text-[11px] text-slate-500 font-semibold">Kas Fisik Tunai Bulan Ini</div>
           <div className="text-xl font-black text-emerald-700 mt-1">
-            {formatRupiah(data?.cashEnding || 0)}
+            {formatRupiah(data?.physicalCashIn || 0)}
           </div>
-          <div className="text-[10px] text-slate-400 mt-0.5">Fisik kas siap pakai</div>
+          <div className="text-[10px] text-slate-400 mt-0.5">Uang cash laci masuk</div>
         </div>
       </div>
 

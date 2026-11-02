@@ -3672,31 +3672,59 @@ async function processCheckoutMemoryFallback(payload: CheckoutPayload & { branch
   });
 
   // Payments
+  const paymentsList: any[] = [];
+  if (payload.bookingId && payload.dpAmount && payload.dpAmount > 0) {
+    let dpMethod = "QRIS";
+    const bkg = (memoryDB.bookings || []).find((b: any) => b.id === payload.bookingId);
+    if (bkg?.dpMethod) dpMethod = bkg.dpMethod;
+    const dpPayment = {
+      id: `pay_dp_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      transactionId: txId,
+      paymentMethod: dpMethod,
+      amountPaid: payload.dpAmount,
+      changeAmount: 0,
+      paymentRef: `DP Booking ${payload.bookingId}`,
+      createdAt: new Date(),
+    };
+    paymentsList.push(dpPayment);
+    memoryDB.payments.push(dpPayment);
+
+    // Link existing DP cashTransaction to this txId
+    const dpCsh = (memoryDB.cashTransactions || []).find(
+      (c: any) => c.source === "DP_BOOKING" && c.description?.includes(payload.bookingId!)
+    );
+    if (dpCsh) dpCsh.transactionId = txId;
+  }
+
   const paymentObj = {
     id: `pay_${Date.now()}`,
     transactionId: txId,
     paymentMethod: payload.paymentMethod,
-    amountPaid: payload.amountPaid,
-    changeAmount: payload.changeAmount,
+    amountPaid: payload.amountPaid ?? (payload.grandTotal - (payload.dpAmount || 0)),
+    changeAmount: payload.changeAmount || 0,
     paymentRef: payload.paymentRef || null,
     createdAt: new Date(),
   };
+  paymentsList.push(paymentObj);
   memoryDB.payments.push(paymentObj);
 
-  // Cash In jika bayar tunai
-  if (payload.paymentMethod === "CASH") {
-    memoryDB.cashTransactions.unshift({
-      id: `csh_${Date.now()}`,
-      type: "CASH_IN",
-      category: "Penjualan Kasir",
-      amount: payload.amountPaid ?? payload.grandTotal,
-      description: `Pembayaran Cash Kasir ${invoiceNumber} (${payload.customerName})`,
-      source: "POS_SALE",
-      transactionId: txId,
-      branch: txBranch,
-      createdAt: new Date(),
-    });
-  }
+  // Cash In untuk pelunasan kasir (baik CASH maupun non-CASH)
+  const payMethodUp = (payload.paymentMethod || "CASH").toUpperCase();
+  const isCash = payMethodUp === "CASH";
+  const cashierReceivedAmount = payload.amountPaid ?? (payload.grandTotal - (payload.dpAmount || 0));
+  const cashierCashEntry = {
+    id: `csh_${Date.now()}`,
+    type: "CASH_IN" as const,
+    category: isCash ? "Penjualan Kasir" : `Penjualan ${payMethodUp}`,
+    amount: cashierReceivedAmount,
+    description: `Pembayaran ${payMethodUp} Kasir ${invoiceNumber} (${payload.customerName})`,
+    source: "POS_SALE",
+    transactionId: txId,
+    branch: txBranch,
+    paymentMethod: payMethodUp,
+    createdAt: new Date(),
+  };
+  memoryDB.cashTransactions.unshift(cashierCashEntry);
 
   // Catat ke Activity Log (BC)
   await recordActivity({
@@ -3789,15 +3817,13 @@ async function processCheckoutMemoryFallback(payload: CheckoutPayload & { branch
             })),
           },
           payments: {
-            create: [
-              {
-                id: paymentObj.id,
-                paymentMethod: paymentObj.paymentMethod as any,
-                amountPaid: paymentObj.amountPaid,
-                changeAmount: paymentObj.changeAmount,
-                paymentRef: paymentObj.paymentRef || undefined,
-              },
-            ],
+            create: paymentsList.map((p) => ({
+              id: p.id,
+              paymentMethod: p.paymentMethod as any,
+              amountPaid: p.amountPaid,
+              changeAmount: p.changeAmount,
+              paymentRef: p.paymentRef || undefined,
+            })),
           },
         },
       }).catch(async (e: any) => {
@@ -3817,23 +3843,30 @@ async function processCheckoutMemoryFallback(payload: CheckoutPayload & { branch
         }
       });
 
-      // 3. Cash transaction jika bayar tunai
-      if (payload.paymentMethod === "CASH") {
-        const cashEntry = memoryDB.cashTransactions[0];
-        if (cashEntry) {
-          await prisma.cashTransaction.create({
-            data: {
-              id: cashEntry.id,
-              type: "CASH_IN",
-              category: "Penjualan Kasir",
-              amount: payload.grandTotal,
-              description: `Pembayaran Cash Kasir ${invoiceNumber} (${payload.customerName})`,
-              source: "POS_SALE",
-              transactionId: newTx.id,
-              branch: txBranch,
-            },
-          }).catch(() => {});
-        }
+      // 3. Simpan pencatatan kasir ke Supabase cash_transactions
+      await prisma.cashTransaction.create({
+        data: {
+          id: cashierCashEntry.id,
+          type: "CASH_IN",
+          category: cashierCashEntry.category,
+          amount: cashierCashEntry.amount,
+          description: cashierCashEntry.description,
+          source: "POS_SALE",
+          transactionId: newTx.id,
+          branch: txBranch,
+        },
+      }).catch(() => {});
+
+      // Link DP booking cashTransaction jika ada
+      if (payload.bookingId) {
+        await prisma.cashTransaction.updateMany({
+          where: {
+            source: "DP_BOOKING",
+            description: { contains: payload.bookingId },
+            transactionId: null,
+          },
+          data: { transactionId: newTx.id },
+        }).catch(() => {});
       }
     }
   } catch (e: any) {
@@ -3850,7 +3883,7 @@ async function processCheckoutMemoryFallback(payload: CheckoutPayload & { branch
   return {
     ...newTx,
     items: itemsCreated,
-    payments: [paymentObj],
+    payments: paymentsList,
     barberman: barber,
   };
 }
@@ -3916,6 +3949,69 @@ export async function getTransactions(branch?: string, limit?: number) {
 // Rumus: Cash Awal + Cash Masuk - Cash Keluar = Cash Saat Ini
 // -------------------------------------------------------------
 
+export function isNonCashPaymentEntry(item: any): boolean {
+  // 1. Cek langsung properti paymentMethod (ada pada in-memory item / payments)
+  const pm = (item.paymentMethod || "").toString().toUpperCase();
+  if (pm === "QRIS" || pm === "TRANSFER" || pm === "DEBIT" || pm === "KREDIT" || pm === "E_WALLET") {
+    return true;
+  }
+  if (pm === "CASH") {
+    return false;
+  }
+
+  // 2. Cek relasi Transaction & Payments jika di-query dari Supabase
+  if (item.transaction) {
+    // Jika transaksi punya payments terperinci (split DP + pelunasan berbeda metode)
+    if (Array.isArray(item.transaction.payments) && item.transaction.payments.length > 0) {
+      if (item.source === "DP_BOOKING" || item.category?.includes("DP")) {
+        const dpPay = item.transaction.payments.find((p: any) =>
+          p.paymentRef?.toLowerCase().includes("dp") || p.id?.includes("dp")
+        );
+        if (dpPay) {
+          const dpM = (dpPay.paymentMethod || "").toString().toUpperCase();
+          if (dpM === "QRIS" || dpM === "TRANSFER" || dpM === "DEBIT" || dpM === "E_WALLET") return true;
+          if (dpM === "CASH") return false;
+        }
+      } else {
+        // Pelunasan kasir
+        const cashierPay = item.transaction.payments.find((p: any) =>
+          !p.paymentRef?.toLowerCase().includes("dp") && !p.id?.includes("dp")
+        );
+        if (cashierPay) {
+          const cpM = (cashierPay.paymentMethod || "").toString().toUpperCase();
+          if (cpM === "QRIS" || cpM === "TRANSFER" || cpM === "DEBIT" || cpM === "E_WALLET") return true;
+          if (cpM === "CASH") return false;
+        }
+      }
+    }
+
+    const txPm = (item.transaction.paymentMethod || "").toString().toUpperCase();
+    if (txPm === "QRIS" || txPm === "TRANSFER" || txPm === "DEBIT" || txPm === "KREDIT" || txPm === "E_WALLET") {
+      return true;
+    }
+  }
+
+  // 3. Cek category & description
+  const cat = (item.category || "").toString().toUpperCase();
+  const desc = (item.description || "").toString().toUpperCase();
+
+  if (
+    cat.includes("QRIS") || cat.includes("TRANSFER") || cat.includes("DEBIT") || cat.includes("NON-TUNAI") || cat.includes("E_WALLET") ||
+    desc.includes("QRIS") || desc.includes("TRANSFER") || desc.includes("DEBIT") || desc.includes("NON-TUNAI") ||
+    desc.includes("[QRIS]") || desc.includes("QR ") || desc.includes("- QR")
+  ) {
+    return true;
+  }
+
+  // Khusus entri DP Booking
+  if (cat.includes("DP") || item.source === "DP_BOOKING") {
+    if (desc.includes("CASH") || desc.includes("TUNAI")) return false;
+    if (desc.includes("QRIS") || desc.includes("TRANSFER") || desc.includes("DEBIT")) return true;
+  }
+
+  return false;
+}
+
 export async function getCashLedger(branch?: string) {
   await initMemoryDBIfNeeded();
 
@@ -3938,8 +4034,13 @@ export async function getCashLedger(branch?: string) {
     const [cashList, settings] = await Promise.all([
       prisma.cashTransaction.findMany({
         where,
+        include: {
+          transaction: {
+            include: { payments: true },
+          },
+        },
         orderBy: { createdAt: "desc" },
-        take: 300,
+        take: 500,
       }).catch(() => []),
       prisma.shopSetting.findFirst().catch(() => null),
     ]);
@@ -3986,12 +4087,7 @@ export async function getCashLedger(branch?: string) {
         item.description?.toLowerCase().includes("modal awal");
       if (item.type === "CASH_IN" && !isInitFloat) {
         totalCashIn += item.amount;
-        // Deteksi QRIS via category (bukan paymentMethod yg tidak ada di DB)
-        const isQris = item.category?.includes("QRIS") ||
-          item.category?.includes("TRANSFER") ||
-          item.category?.includes("DEBIT") ||
-          item.description?.includes("QRIS") ||
-          item.description?.includes("QR");
+        const isQris = isNonCashPaymentEntry(item);
         if (isQris) {
           qrisIncome += item.amount;
         } else {
@@ -4039,12 +4135,7 @@ export async function getCashLedger(branch?: string) {
       item.description?.toLowerCase().includes("modal awal");
     if (item.type === "CASH_IN" && !isInitFloat) {
       totalCashIn += item.amount;
-      // Deteksi QRIS/digital via category (paymentMethod tidak ada di DB schema)
-      const isQR = item.category?.includes("QRIS") ||
-        item.category?.includes("TRANSFER") ||
-        item.category?.includes("DEBIT") ||
-        item.description?.includes("QRIS") ||
-        item.description?.includes("QR");
+      const isQR = isNonCashPaymentEntry(item);
       if (isQR) totalQrisIncome += item.amount;
       else totalPhysicalCashIn += item.amount;
 
@@ -4116,6 +4207,20 @@ export async function createCashEntry(data: {
 
   if (!memoryDB.cashTransactions) memoryDB.cashTransactions = [];
   memoryDB.cashTransactions.unshift(entry);
+
+  if (entry.type === "CASH_OUT") {
+    if (!memoryDB.expenses) memoryDB.expenses = [];
+    memoryDB.expenses.unshift({
+      id: `exp_${entry.id}`,
+      category: entry.category,
+      amount: entry.amount,
+      description: entry.description,
+      expenseDate: entry.createdAt,
+      paymentMethod: "CASH",
+      branch: entry.branch,
+      createdAt: entry.createdAt,
+    });
+  }
 
   try {
     await recordActivity({
@@ -4602,12 +4707,20 @@ export async function getDashboardData(
 
       // Sisa kas di laci — 100% SINKRON dengan Cash Management (getCashLedger)
       let branchCashInHand = 0;
+      let branchPhysicalCashIn = 0;
+      let branchQrisIncome = 0;
       if (bFilter === "Telkom") {
-        branchCashInHand = cashLedger.telkomCashInHand ?? cashLedger.cashInHand ?? 0;
+        branchCashInHand = (cashLedger as any).telkomCashInHand ?? cashLedger.cashInHand ?? 0;
+        branchPhysicalCashIn = (cashLedger as any).telkomPhysicalIn ?? cashLedger.physicalCashIn ?? 0;
+        branchQrisIncome = (cashLedger as any).telkomQrisIn ?? cashLedger.qrisIncome ?? 0;
       } else if (bFilter === "Suta") {
-        branchCashInHand = cashLedger.sutaCashInHand ?? cashLedger.cashInHand ?? 0;
+        branchCashInHand = (cashLedger as any).sutaCashInHand ?? cashLedger.cashInHand ?? 0;
+        branchPhysicalCashIn = (cashLedger as any).sutaPhysicalIn ?? cashLedger.physicalCashIn ?? 0;
+        branchQrisIncome = (cashLedger as any).sutaQrisIn ?? cashLedger.qrisIncome ?? 0;
       } else {
-        branchCashInHand = cashLedger.totalCashInHand ?? cashLedger.cashInHand ?? 0;
+        branchCashInHand = (cashLedger as any).totalCashInHand ?? cashLedger.cashInHand ?? 0;
+        branchPhysicalCashIn = (cashLedger as any).totalPhysicalCashIn ?? cashLedger.physicalCashIn ?? 0;
+        branchQrisIncome = (cashLedger as any).totalQrisIncome ?? cashLedger.qrisIncome ?? 0;
       }
 
       return {
@@ -4621,6 +4734,8 @@ export async function getDashboardData(
         lowStockProducts: lowStock,
         productSalesRevenue,
         cashInHand: branchCashInHand,
+        physicalCashIn: branchPhysicalCashIn,
+        qrisIncome: branchQrisIncome,
         cashOut: periodExpenses,
         totalExpenses: periodExpenses,
       };
@@ -4745,11 +4860,24 @@ export async function getDashboardData(
     }
 
     let cashIn = 0;
+    let physicalCashIn = 0;
+    let qrisIncome = 0;
     let cashOut = 0;
     for (const c of memoryDB.cashTransactions) {
       if (bFilter && bFilter !== "All" && c.branch && c.branch !== bFilter) continue;
-      if (c.type === "CASH_IN") cashIn += c.amount || 0;
-      else if (c.type === "CASH_OUT") cashOut += c.amount || 0;
+      const isInitFloat =
+        c.category === "Modal Awal" ||
+        c.id === "csh_init" ||
+        c.description?.toLowerCase().includes("modal awal");
+      if (c.type === "CASH_IN" && !isInitFloat) {
+        cashIn += c.amount || 0;
+        const isQR = isNonCashPaymentEntry(c);
+        if (isQR) {
+          qrisIncome += c.amount || 0;
+        } else {
+          physicalCashIn += c.amount || 0;
+        }
+      } else if (c.type === "CASH_OUT") cashOut += c.amount || 0;
     }
     const initF = bFilter === "Suta"
       ? (memoryDB.shopSettings?.initialCashFloatSuta ?? 100000)
@@ -4757,7 +4885,7 @@ export async function getDashboardData(
       ? (memoryDB.shopSettings?.initialCashFloatTelkom ?? 100000)
       : ((memoryDB.shopSettings?.initialCashFloatTelkom ?? 100000) + (memoryDB.shopSettings?.initialCashFloatSuta ?? 100000));
 
-    const cashInHand = initF + cashIn - cashOut;
+    const cashInHand = initF + physicalCashIn - cashOut;
 
     return {
       todayCustomer: txs.length,
@@ -4770,9 +4898,10 @@ export async function getDashboardData(
       lowStockProducts: lowStock,
       productSalesRevenue,
       cashInHand,
+      physicalCashIn,
+      qrisIncome,
       cashOut,
       totalExpenses: cashOut,
-
     };
   };
 
@@ -4986,7 +5115,10 @@ export async function getDailyReport(dateStr?: string, branch?: string) {
     const [txs, cashEntries, barbermanList, bookingsCount, newMembersCount, rawExpenses] = await Promise.all([
 
       prisma.transaction.findMany({ where: txWhere, include: { items: true, payments: true, barberman: true, customer: true }, orderBy: { createdAt: "desc" } }).catch(() => [] as any[]),
-      prisma.cashTransaction.findMany({ where: { createdAt: { gte: start, lte: end }, ...(branch && branch !== "All" ? { branch } : {}) } }).catch(() => [] as any[]),
+      prisma.cashTransaction.findMany({
+        where: { createdAt: { gte: start, lte: end }, ...(branch && branch !== "All" ? { branch } : {}) },
+        include: { transaction: { include: { payments: true } } },
+      }).catch(() => [] as any[]),
       prisma.barberman.findMany({ where: barberWhere, orderBy: { name: "asc" } }).catch(() => [] as any[]),
       prisma.booking.count({ where: { bookingDate: { gte: start, lte: end } } }).catch(() => 0),
       prisma.member.count({ where: { createdAt: { gte: start, lte: end } } }).catch(() => 0),
@@ -4995,7 +5127,7 @@ export async function getDailyReport(dateStr?: string, branch?: string) {
     ]);
 
     let serviceSales = 0; let productSales = 0; let totalOmzet = 0;
-    let cashIn = 0; let cashOut = 0;
+    let cashIn = 0; let physicalCashIn = 0; let qrisIncome = 0; let cashOut = 0;
 
     for (const tx of txs) {
       totalOmzet += (tx as any).grandTotal || 0;
@@ -5008,7 +5140,9 @@ export async function getDailyReport(dateStr?: string, branch?: string) {
     const expensesList: any[] = [];
     for (const exp of rawExpenses) {
       seenExp.add(exp.id);
-      seenExp.add(`csh_${exp.id}`);
+      const cleanId = exp.id.replace(/^exp_/, "");
+      seenExp.add(cleanId);
+      seenExp.add(`csh_${cleanId}`);
       expensesList.push({
         id: exp.id,
         category: exp.category,
@@ -5021,10 +5155,28 @@ export async function getDailyReport(dateStr?: string, branch?: string) {
     }
 
     for (const c of cashEntries) {
-      if ((c as any).type === "CASH_IN") cashIn += (c as any).amount || 0;
-      else if ((c as any).type === "CASH_OUT") {
+      const isInitFloat =
+        (c as any).category === "Modal Awal" ||
+        (c as any).id === "csh_init" ||
+        (c as any).description?.toLowerCase().includes("modal awal");
+
+      if ((c as any).type === "CASH_IN" && !isInitFloat) {
+        cashIn += (c as any).amount || 0;
+        const isQR = isNonCashPaymentEntry(c);
+        if (isQR) {
+          qrisIncome += (c as any).amount || 0;
+        } else {
+          physicalCashIn += (c as any).amount || 0;
+        }
+      } else if ((c as any).type === "CASH_OUT") {
         cashOut += (c as any).amount || 0;
-        if (!seenExp.has((c as any).id) && !(c as any).source?.includes("EXPENSE")) {
+        const cleanCId = (c as any).id.replace(/^csh_/, "");
+        const isDup =
+          seenExp.has((c as any).id) ||
+          seenExp.has(cleanCId) ||
+          seenExp.has(`exp_${(c as any).id}`) ||
+          (c as any).source?.includes("EXPENSE");
+        if (!isDup) {
           expensesList.push({
             id: (c as any).id,
             category: (c as any).category || "Operasional",
@@ -5055,7 +5207,10 @@ export async function getDailyReport(dateStr?: string, branch?: string) {
       totalOmzet, serviceSales, productSales,
       pomadeSold: pomadeReport.totalSold, pomadeOmzet: pomadeReport.totalOmzet,
       tonicPowderSold: tonicPowderReport.totalSold, tonicPowderOmzet: tonicPowderReport.totalOmzet,
-      cashIn, cashOut, cashEnding: cashIn - cashOut,
+      cashIn, physicalCashIn, qrisIncome, cashOut,
+      cashEnding: physicalCashIn - cashOut,
+      physicalCashEnding: physicalCashIn - cashOut,
+      totalCashEnding: cashIn - cashOut,
       totalExpenses,
       expensesList,
 
@@ -5085,7 +5240,7 @@ export async function getDailyReport(dateStr?: string, branch?: string) {
 
   let cashEntries = (memoryDB.cashTransactions || []).filter((c: any) => { const d = new Date(c.createdAt); return d >= start && d <= end; });
   if (branch && branch !== "All") cashEntries = cashEntries.filter((c: any) => !c.branch || c.branch === branch || c.branch === "All");
-  let cashIn = 0; let cashOut = 0;
+  let cashIn = 0; let physicalCashIn = 0; let qrisIncome = 0; let cashOut = 0;
   const rawExpenses = (memoryDB.expenses || []).filter((e: any) => {
     const d = new Date(e.expenseDate || e.createdAt);
     return d >= start && d <= end && (!branch || branch === "All" || !e.branch || e.branch === branch);
@@ -5094,7 +5249,9 @@ export async function getDailyReport(dateStr?: string, branch?: string) {
   const expensesList: any[] = [];
   for (const exp of rawExpenses) {
     seenExp.add(exp.id);
-    seenExp.add(`csh_${exp.id}`);
+    const cleanId = exp.id.replace(/^exp_/, "");
+    seenExp.add(cleanId);
+    seenExp.add(`csh_${cleanId}`);
     expensesList.push({
       id: exp.id,
       category: exp.category,
@@ -5107,10 +5264,28 @@ export async function getDailyReport(dateStr?: string, branch?: string) {
   }
 
   for (const c of cashEntries) {
-    if (c.type === "CASH_IN") cashIn += c.amount || 0;
-    else if (c.type === "CASH_OUT") {
+    const isInitFloat =
+      c.category === "Modal Awal" ||
+      c.id === "csh_init" ||
+      c.description?.toLowerCase().includes("modal awal");
+
+    if (c.type === "CASH_IN" && !isInitFloat) {
+      cashIn += c.amount || 0;
+      const isQR = isNonCashPaymentEntry(c);
+      if (isQR) {
+        qrisIncome += c.amount || 0;
+      } else {
+        physicalCashIn += c.amount || 0;
+      }
+    } else if (c.type === "CASH_OUT") {
       cashOut += c.amount || 0;
-      if (!seenExp.has(c.id) && !c.source?.includes("EXPENSE")) {
+      const cleanCId = (c as any).id.replace(/^csh_/, "");
+      const isDup =
+        seenExp.has(c.id) ||
+        seenExp.has(cleanCId) ||
+        seenExp.has(`exp_${c.id}`) ||
+        (c as any).source?.includes("EXPENSE");
+      if (!isDup) {
         expensesList.push({
           id: c.id,
           category: c.category || "Operasional",
@@ -5147,7 +5322,10 @@ export async function getDailyReport(dateStr?: string, branch?: string) {
     totalOmzet, serviceSales, productSales,
     pomadeSold: pomadeReport.totalSold, pomadeOmzet: pomadeReport.totalOmzet,
     tonicPowderSold: tonicPowderReport.totalSold, tonicPowderOmzet: tonicPowderReport.totalOmzet,
-    cashIn, cashOut, cashEnding: cashIn - cashOut,
+    cashIn, physicalCashIn, qrisIncome, cashOut,
+    cashEnding: physicalCashIn - cashOut,
+    physicalCashEnding: physicalCashIn - cashOut,
+    totalCashEnding: cashIn - cashOut,
     totalExpenses,
     expensesList,
 
@@ -5179,7 +5357,7 @@ export async function getAnnualReport(year: number = new Date().getFullYear(), b
     if (branch && branch !== "All") cashWhere.branch = branch;
 
     const [txs, allExpenses, allCashOut] = await Promise.all([
-      prisma.transaction.findMany({ where: txWhere, include: { items: true } }).catch(() => [] as any[]),
+      prisma.transaction.findMany({ where: txWhere, include: { items: true, payments: true } }).catch(() => [] as any[]),
       prisma.expense.findMany({ where: expWhere }).catch(() => [] as any[]),
       prisma.cashTransaction.findMany({ where: cashWhere }).catch(() => [] as any[]),
     ]);
@@ -5189,14 +5367,22 @@ export async function getAnnualReport(year: number = new Date().getFullYear(), b
     const combinedExpenses: { amount: number; date: Date }[] = [];
     for (const exp of allExpenses) {
       seenExp.add(exp.id);
-      seenExp.add(`csh_${exp.id}`);
+      const cleanId = exp.id.replace(/^exp_/, "");
+      seenExp.add(cleanId);
+      seenExp.add(`csh_${cleanId}`);
       combinedExpenses.push({
         amount: Number(exp.amount || 0),
         date: new Date(exp.expenseDate || exp.createdAt),
       });
     }
     for (const c of allCashOut) {
-      if (!seenExp.has(c.id) && !c.source?.includes("EXPENSE")) {
+      const cleanCId = c.id.replace(/^csh_/, "");
+      const isDup =
+        seenExp.has(c.id) ||
+        seenExp.has(cleanCId) ||
+        seenExp.has(`exp_${c.id}`) ||
+        c.source?.includes("EXPENSE");
+      if (!isDup) {
         combinedExpenses.push({
           amount: Number(c.amount || 0),
           date: new Date(c.createdAt),
@@ -5211,11 +5397,38 @@ export async function getAnnualReport(year: number = new Date().getFullYear(), b
         .filter((e) => e.date.getMonth() === m)
         .reduce((sum: number, e) => sum + (e.amount || 0), 0);
 
-      let omzet = 0; let productOmzet = 0;
+      let omzet = 0; let serviceSales = 0; let productOmzet = 0; let productCost = 0; let cashIncome = 0; let qrisIncome = 0;
       for (const t of monthTxs) {
         omzet += (t as any).grandTotal || 0;
-        for (const it of (t as any).items || []) { if (it.itemType === "PRODUCT") productOmzet += it.subtotal || 0; }
+        for (const it of (t as any).items || []) {
+          if (it.itemType === "PRODUCT") {
+            productOmzet += it.subtotal || 0;
+            productCost += Number(it.costPrice || 0) * Number(it.quantity || 1);
+          } else if (it.itemType === "SERVICE") {
+            serviceSales += it.subtotal || 0;
+          }
+        }
+        if (Array.isArray((t as any).payments) && (t as any).payments.length > 0) {
+          for (const p of (t as any).payments) {
+            const pm = (p.paymentMethod || "").toUpperCase();
+            if (pm.includes("QRIS") || pm.includes("TRANSFER") || pm.includes("DEBIT")) {
+              qrisIncome += Number(p.amountPaid || p.amount || 0);
+            } else {
+              cashIncome += Number(p.amountPaid || p.amount || 0);
+            }
+          }
+        } else {
+          const pm = ((t as any).paymentMethod || "CASH").toUpperCase();
+          const isQR = pm.includes("QRIS") || pm.includes("TRANSFER") || pm.includes("DEBIT");
+          if (isQR) {
+            qrisIncome += (t as any).grandTotal || 0;
+          } else {
+            cashIncome += (t as any).grandTotal || 0;
+          }
+        }
       }
+      const grossProfit = serviceSales + (productOmzet - productCost);
+      const netProfit = grossProfit - monthExpenses;
       monthsData.push({
         month: monthNames[m],
         monthNumber: m + 1,
@@ -5223,8 +5436,10 @@ export async function getAnnualReport(year: number = new Date().getFullYear(), b
         transactions: monthTxs.length,
         omzet,
         productOmzet,
+        cashIncome,
+        qrisIncome,
         expenses: monthExpenses,
-        netProfit: omzet - monthExpenses,
+        netProfit,
       });
     }
     return {
@@ -5234,9 +5449,10 @@ export async function getAnnualReport(year: number = new Date().getFullYear(), b
         totalCustomer: monthsData.reduce((s, m) => s + m.customer, 0),
         totalTransactions: monthsData.reduce((s, m) => s + m.transactions, 0),
         totalProductSales: monthsData.reduce((s, m) => s + m.productOmzet, 0),
+        totalCashIncome: monthsData.reduce((s, m) => s + (m.cashIncome || 0), 0),
+        totalQrisIncome: monthsData.reduce((s, m) => s + (m.qrisIncome || 0), 0),
         totalExpenses: monthsData.reduce((s, m) => s + m.expenses, 0),
         totalNetProfit: monthsData.reduce((s, m) => s + m.netProfit, 0),
-
       },
     };
   }
@@ -5257,13 +5473,40 @@ export async function getAnnualReport(year: number = new Date().getFullYear(), b
       .filter((e: any) => new Date(e.expenseDate || e.createdAt).getMonth() === m)
       .reduce((sum: number, e: any) => sum + (e.amount || 0), 0);
 
-
-    let omzet = 0; let productOmzet = 0;
+    let omzet = 0; let serviceSales = 0; let productOmzet = 0; let productCost = 0; let cashIncome = 0; let qrisIncome = 0;
     for (const t of txs) {
       omzet += t.grandTotal || 0;
       const items = (memoryDB.transactionItems || []).filter((i: any) => i.transactionId === t.id);
-      for (const it of items) { if (it.itemType === "PRODUCT") productOmzet += it.subtotal || 0; }
+      for (const it of items) {
+        if (it.itemType === "PRODUCT") {
+          productOmzet += it.subtotal || 0;
+          productCost += Number(it.costPrice || 0) * Number(it.quantity || 1);
+        } else if (it.itemType === "SERVICE") {
+          serviceSales += it.subtotal || 0;
+        }
+      }
+      const tPayments = (memoryDB.payments || []).filter((p: any) => p.transactionId === t.id);
+      if (tPayments.length > 0) {
+        for (const p of tPayments) {
+          const pm = (p.paymentMethod || "").toUpperCase();
+          if (pm.includes("QRIS") || pm.includes("TRANSFER") || pm.includes("DEBIT")) {
+            qrisIncome += Number(p.amountPaid || p.amount || 0);
+          } else {
+            cashIncome += Number(p.amountPaid || p.amount || 0);
+          }
+        }
+      } else {
+        const pm = (t.paymentMethod || "CASH").toUpperCase();
+        const isQR = pm.includes("QRIS") || pm.includes("TRANSFER") || pm.includes("DEBIT");
+        if (isQR) {
+          qrisIncome += t.grandTotal || 0;
+        } else {
+          cashIncome += t.grandTotal || 0;
+        }
+      }
     }
+    const grossProfit = serviceSales + (productOmzet - productCost);
+    const netProfit = grossProfit - monthExpenses;
     monthsData.push({
       month: monthNames[m],
       monthNumber: m + 1,
@@ -5271,10 +5514,11 @@ export async function getAnnualReport(year: number = new Date().getFullYear(), b
       transactions: txs.length,
       omzet,
       productOmzet,
+      cashIncome,
+      qrisIncome,
       expenses: monthExpenses,
-      netProfit: omzet - monthExpenses,
+      netProfit,
     });
-
   }
   return {
     year, branch: branch || "All", months: monthsData,
@@ -5283,9 +5527,10 @@ export async function getAnnualReport(year: number = new Date().getFullYear(), b
       totalCustomer: monthsData.reduce((s, m) => s + m.customer, 0),
       totalTransactions: monthsData.reduce((s, m) => s + m.transactions, 0),
       totalProductSales: monthsData.reduce((s, m) => s + m.productOmzet, 0),
+      totalCashIncome: monthsData.reduce((s, m) => s + (m.cashIncome || 0), 0),
+      totalQrisIncome: monthsData.reduce((s, m) => s + (m.qrisIncome || 0), 0),
       totalExpenses: monthsData.reduce((s, m) => s + m.expenses, 0),
       totalNetProfit: monthsData.reduce((s, m) => s + m.netProfit, 0),
-
     },
   };
 }
@@ -5315,7 +5560,10 @@ export async function getMonthlyReport(yearNum?: number, monthNum?: number, bran
 
     [txs, cashEntries, barberList, rawExpenses] = await Promise.all([
       prisma.transaction.findMany({ where: txWhere, include: { items: true, barberman: true, customer: true, payments: true }, orderBy: { createdAt: "desc" } }).catch(() => []),
-      prisma.cashTransaction.findMany({ where: { createdAt: { gte: startM, lte: endM }, ...(branch && branch !== "All" ? { branch } : {}) } }).catch(() => []),
+      prisma.cashTransaction.findMany({
+        where: { createdAt: { gte: startM, lte: endM }, ...(branch && branch !== "All" ? { branch } : {}) },
+        include: { transaction: { include: { payments: true } } },
+      }).catch(() => []),
       prisma.barberman.findMany({ where: { isActive: true, ...(branch && branch !== "All" ? { workingBranch: branch } : {}) }, orderBy: { name: "asc" } }).catch(() => []),
       prisma.expense.findMany({ where: expWhere, orderBy: { expenseDate: "desc" } }).catch(() => []),
 
@@ -5355,10 +5603,21 @@ export async function getMonthlyReport(yearNum?: number, monthNum?: number, bran
 
   for (const tx of txs) {
     totalOmzet += tx.grandTotal || 0;
-    const pm = (tx.paymentMethod || "CASH").toUpperCase();
-    if (!paymentMap[pm]) paymentMap[pm] = { count: 0, total: 0 };
-    paymentMap[pm].count += 1;
-    paymentMap[pm].total += tx.grandTotal || 0;
+
+    // Perhitungan metode pembayaran yang detail (mendukung split payment jika ada payments table)
+    if (tx.payments && tx.payments.length > 0) {
+      for (const p of tx.payments) {
+        const pm = (p.paymentMethod || "CASH").toUpperCase();
+        if (!paymentMap[pm]) paymentMap[pm] = { count: 0, total: 0 };
+        paymentMap[pm].count += 1;
+        paymentMap[pm].total += Number(p.amount || 0);
+      }
+    } else {
+      const pm = (tx.paymentMethod || "CASH").toUpperCase();
+      if (!paymentMap[pm]) paymentMap[pm] = { count: 0, total: 0 };
+      paymentMap[pm].count += 1;
+      paymentMap[pm].total += tx.grandTotal || 0;
+    }
 
     const items = tx.items || [];
     for (const it of items) {
@@ -5379,13 +5638,15 @@ export async function getMonthlyReport(yearNum?: number, monthNum?: number, bran
     }
   }
 
-  let cashIn = 0; let cashOut = 0;
+  let cashIn = 0; let physicalCashIn = 0; let qrisIncome = 0; let cashOut = 0;
   const seenExp = new Set<string>();
   const expensesList: any[] = [];
 
   for (const exp of rawExpenses) {
     seenExp.add(exp.id);
-    seenExp.add(`csh_${exp.id}`);
+    const cleanId = exp.id.replace(/^exp_/, "");
+    seenExp.add(cleanId);
+    seenExp.add(`csh_${cleanId}`);
     expensesList.push({
       id: exp.id,
       category: exp.category || "Operasional",
@@ -5397,13 +5658,29 @@ export async function getMonthlyReport(yearNum?: number, monthNum?: number, bran
     });
   }
 
-
   for (const c of cashEntries) {
-    if (c.type === "CASH_IN") {
+    const isInitFloat =
+      c.category === "Modal Awal" ||
+      c.id === "csh_init" ||
+      c.description?.toLowerCase().includes("modal awal");
+
+    if (c.type === "CASH_IN" && !isInitFloat) {
       cashIn += c.amount || 0;
+      const isQR = isNonCashPaymentEntry(c);
+      if (isQR) {
+        qrisIncome += c.amount || 0;
+      } else {
+        physicalCashIn += c.amount || 0;
+      }
     } else if (c.type === "CASH_OUT") {
       cashOut += c.amount || 0;
-      if (!seenExp.has(c.id) && !c.source?.includes("EXPENSE")) {
+      const cleanCId = (c as any).id.replace(/^csh_/, "");
+      const isDup =
+        seenExp.has(c.id) ||
+        seenExp.has(cleanCId) ||
+        seenExp.has(`exp_${c.id}`) ||
+        (c as any).source?.includes("EXPENSE");
+      if (!isDup) {
         expensesList.push({
           id: c.id,
           category: c.category || "Operasional",
@@ -5447,9 +5724,11 @@ export async function getMonthlyReport(yearNum?: number, monthNum?: number, bran
     branch: branch || "All",
     totalCustomers: txs.length, totalTransactions: txs.length,
     totalOmzet, serviceSales, productSales, productCost, grossProfit,
-    cashExpenses: totalCashExpenses, netOperatingIncome, cashIn, cashOut,
-
-    cashEnding: cashIn - cashOut,
+    cashExpenses: totalCashExpenses, netOperatingIncome,
+    cashIn, physicalCashIn, qrisIncome, cashOut,
+    cashEnding: physicalCashIn - cashOut,
+    physicalCashEnding: physicalCashIn - cashOut,
+    totalCashEnding: cashIn - cashOut,
     averageTicketSize: txs.length > 0 ? Math.round(totalOmzet / txs.length) : 0,
     barbermanPerformance: barbermanStats,
     paymentsBreakdown, topServices, topProducts, expensesList,
